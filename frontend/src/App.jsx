@@ -1,17 +1,24 @@
+import { useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import WebcamFeed from "./components/WebcamFeed";
 import GestureDisplay from "./components/GestureDisplay";
 import SentenceBuilder from "./components/SentenceBuilder";
+import LanguageSwitcher from "./components/LanguageSwitcher";
+import TranslationOutput from "./components/TranslationOutput";
+
+const glassPanel =
+  "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]";
 
 export default function App() {
   const { isConnected, prediction, error, sendFrame } = useWebSocket();
+  const [targetLocale, setTargetLocale] = useState("en");
 
   return (
-    <div className="flex flex-col h-screen max-h-screen overflow-hidden bg-[linear-gradient(135deg,#0a0a1a_0%,#0d1b2a_100%)] text-slate-100 font-sans selection:bg-[#14b8a5] selection:text-white">
+    <div className="flex flex-col h-screen max-h-screen overflow-hidden bg-[linear-gradient(135deg,#0a0a1a_0%,#0d1b2a_100%)] text-slate-100 font-[Inter,sans-serif] selection:bg-[#14b8a5] selection:text-white">
       {/* ─── Header ─── */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#0a0a1a]/80 backdrop-blur-md z-50 shrink-0">
         <div className="flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-[#14b8a5] to-emerald-600 shadow-lg shadow-[#14b8a5]/20">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-[#14b8a5] to-emerald-600 shadow-lg shadow-[#14b8a5]/20">
             <span className="material-symbols-outlined text-white text-2xl">
               sign_language
             </span>
@@ -23,7 +30,7 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Status Indicators */}
+          {/* Connection Status */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5">
             <span className="relative flex h-2.5 w-2.5">
               {isConnected && (
@@ -39,16 +46,26 @@ export default function App() {
               {isConnected ? "Connected" : "Disconnected"}
             </span>
           </div>
+
+          {/* Badge */}
           <div className="px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide">
-            Phase 1
+            Phase 2
           </div>
+
+          {/* Language Switcher */}
+          <LanguageSwitcher
+            locale={targetLocale}
+            onLocaleChange={setTargetLocale}
+          />
         </div>
       </header>
 
       {/* ─── Main Content ─── */}
       <main className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 gap-6 overflow-hidden">
-        {/* Left Column: Video Feed (60%) */}
-        <section className="flex flex-col flex-1 min-h-[300px] lg:h-full relative rounded-2xl overflow-hidden group bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]">
+        {/* Left Column: Video Feed */}
+        <section
+          className={`flex flex-col flex-1 min-h-[300px] lg:h-full relative rounded-2xl overflow-hidden group ${glassPanel}`}
+        >
           <WebcamFeed
             sendFrame={sendFrame}
             landmarks={prediction?.landmarks || []}
@@ -63,8 +80,8 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Column: Intelligence Panel (40%) */}
-        <aside className="flex flex-col gap-4 lg:w-[480px] shrink-0 h-full overflow-y-auto pr-1">
+        {/* Right Column: Intelligence Panel */}
+        <aside className="flex flex-col gap-4 lg:w-[420px] shrink-0 h-full overflow-y-auto pr-1">
           {/* Card 1: Gesture Recognition */}
           <GestureDisplay
             label={prediction?.label}
@@ -75,38 +92,17 @@ export default function App() {
           {/* Card 2: Sentence Builder */}
           <SentenceBuilder sentence={prediction?.sentence || ""} />
 
-          {/* Card 3: Translation Output Area */}
-          <div className="flex flex-col flex-1 overflow-hidden min-h-[160px] rounded-2xl bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]">
-            <div className="p-4 bg-black/20 border-b border-white/5 flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Translation Output
-              </span>
-              <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#14b8a5] hover:bg-[#0f766e] text-white text-xs font-bold shadow-lg shadow-[#14b8a5]/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled
-              >
-                <span className="material-symbols-outlined text-[16px]">
-                  volume_up
-                </span>
-                Speak
-              </button>
-            </div>
-            <div className="p-5 flex-1 relative flex flex-col justify-center">
-              {prediction?.sentence ? (
-                <p className="text-lg text-slate-300 leading-relaxed font-light">
-                  {prediction.sentence}
-                </p>
-              ) : (
-                <p className="text-slate-500 italic font-light text-center">
-                  Awaiting gestures...
-                </p>
-              )}
-            </div>
-          </div>
+          {/* Card 3: Translation Output (Lingo.dev SDK + TTS) */}
+          <TranslationOutput
+            sentence={prediction?.sentence || ""}
+            targetLocale={targetLocale}
+          />
 
           {/* Card 4: System Status Compact */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-xl flex flex-col items-center justify-center gap-1 p-3 cursor-default bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors hover:bg-white/5 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]">
+            <div
+              className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default`}
+            >
               <span
                 className={`material-symbols-outlined text-xl ${isConnected ? "text-emerald-400" : "text-red-400"}`}
               >
@@ -119,25 +115,27 @@ export default function App() {
                 {isConnected ? "Online" : "Offline"}
               </span>
             </div>
-            <div className="rounded-xl flex flex-col items-center justify-center gap-1 p-3 cursor-default bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors hover:bg-white/5 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]">
+            <div
+              className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default`}
+            >
               <span className="material-symbols-outlined text-blue-400 text-xl">
                 psychology
               </span>
               <span className="text-[10px] text-slate-400 uppercase font-bold">
-                Model
+                AI Model
               </span>
-              <span className="text-[10px] text-white font-mono">
-                TFLite (ISL)
-              </span>
+              <span className="text-xs text-white font-mono">TFLite</span>
             </div>
-            <div className="rounded-xl flex flex-col items-center justify-center gap-1 p-3 cursor-default opacity-50 bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-colors hover:bg-white/5">
+            <div
+              className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default`}
+            >
               <span className="material-symbols-outlined text-purple-400 text-xl">
-                record_voice_over
+                translate
               </span>
               <span className="text-[10px] text-slate-400 uppercase font-bold">
-                TTS/STT
+                Lingo.dev
               </span>
-              <span className="text-xs text-white font-mono">Phase 3</span>
+              <span className="text-xs text-white font-mono">Active</span>
             </div>
           </div>
         </aside>

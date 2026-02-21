@@ -4,18 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    react(),
-    // Lingo.dev compiler will be enabled in Phase 2:
-    // lingoCompilerPlugin({
-    //   sourceRoot: 'src',
-    //   sourceLocale: 'en',
-    //   targetLocales: ['es', 'hi', 'fr', 'de', 'ja', 'ar', 'zh', 'ko', 'pt'],
-    //   models: 'lingo.dev',
-    //   dev: { usePseudotranslator: true },
-    // }),
-  ],
+  plugins: [tailwindcss(), react()],
   server: {
     proxy: {
       "/api": {
