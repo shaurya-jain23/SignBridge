@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-SignBridge Pro — FastAPI Backend Server (Phase 1)
+SignBridge Pro — FastAPI Backend Server (Phase 2)
 
 WebSocket endpoint receives base64 webcam frames from the frontend,
 runs real MediaPipe + TFLite inference, returns gesture predictions.
+REST endpoint translates sentences via Lingo.dev SDK.
 
 Usage:
     cd backend
@@ -12,15 +13,22 @@ Usage:
     python server.py
 """
 
+import asyncio
 import json
 import logging
+import os
 from typing import Optional
 
+from dotenv import load_dotenv
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from services.gesture_service import GestureService
+
+# Load environment variables from .env
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -34,7 +42,7 @@ logger = logging.getLogger("signbridge")
 app = FastAPI(
     title="SignBridge Pro API",
     description="Real-time sign language detection and translation backend",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 # CORS — allow the Vite dev server
@@ -77,9 +85,9 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "phase": 1,
+        "phase": 2,
         "model_loaded": gesture_service is not None,
-        "description": "Phase 1 — Real MediaPipe + TFLite inference",
+        "description": "Phase 2 — Gesture Recognition + Lingo.dev Translation",
     }
 
 
@@ -89,6 +97,48 @@ async def clear_sentence():
     if gesture_service:
         gesture_service.clear_sentence()
     return {"status": "ok", "sentence": ""}
+
+
+# ---------------------------------------------------------------------------
+# Translation Endpoint (Lingo.dev SDK)
+# ---------------------------------------------------------------------------
+class TranslateRequest(BaseModel):
+    text: str
+    target_locale: str
+    source_locale: str = "en"
+
+
+@app.post("/api/translate")
+async def translate_text(req: TranslateRequest):
+    """Translate text using Lingo.dev SDK."""
+    api_key = os.getenv("LINGODOTDEV_API_KEY")
+    if not api_key:
+        return {"error": "LINGODOTDEV_API_KEY not set", "translated_text": req.text}
+
+    if not req.text.strip():
+        return {"translated_text": "", "source_locale": req.source_locale, "target_locale": req.target_locale}
+
+    if req.target_locale == req.source_locale:
+        return {"translated_text": req.text, "source_locale": req.source_locale, "target_locale": req.target_locale}
+
+    try:
+        from lingodotdev.engine import LingoDotDevEngine
+
+        translated = await LingoDotDevEngine.quick_translate(
+            req.text,
+            api_key=api_key,
+            source_locale=req.source_locale,
+            target_locale=req.target_locale,
+        )
+        logger.info(f"Translated '{req.text}' → '{translated}' ({req.source_locale}→{req.target_locale})")
+        return {
+            "translated_text": translated,
+            "source_locale": req.source_locale,
+            "target_locale": req.target_locale,
+        }
+    except Exception as e:
+        logger.error(f"Translation error: {e}")
+        return {"error": str(e), "translated_text": req.text}
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +176,8 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_json({"error": "Invalid JSON"})
                 except RuntimeError:
                     break
+            except WebSocketDisconnect:
+                break
             except Exception as e:
                 logger.error(f"Error processing frame: {e}")
                 try:
