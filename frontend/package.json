@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@lingo.dev/compiler": "^0.3.8",
+    "lingo.dev": "^0.131.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
