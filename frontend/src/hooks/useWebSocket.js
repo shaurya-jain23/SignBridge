@@ -17,6 +17,8 @@ export function useWebSocket() {
   const connect = useCallback(() => {
     // Clean up any existing connection
     if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
       wsRef.current.close();
     }
 
@@ -73,7 +75,11 @@ export function useWebSocket() {
     connect();
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      if (wsRef.current) wsRef.current.close();
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
+        wsRef.current.close();
+      }
     };
   }, [connect]);
 
