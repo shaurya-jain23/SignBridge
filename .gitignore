@@ -5,12 +5,16 @@ __pycache__/
 *.pyo
 .env
 
+# Logs
+*.log
+
 # Node
 frontend/node_modules/
 frontend/dist/
 
 # Lingo.dev
 frontend/.lingo/
+frontend/src/lingo/
 
 # IDE
 .idea/
