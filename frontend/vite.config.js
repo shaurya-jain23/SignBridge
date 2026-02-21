@@ -15,6 +15,11 @@ export default defineConfig({
         target: "ws://localhost:8000",
         ws: true,
       },
+      "/lingo-api": {
+        target: "https://engine.lingo.dev",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/lingo-api/, ""),
+      },
     },
   },
 });
