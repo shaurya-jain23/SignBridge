@@ -94,7 +94,10 @@ export default function App() {
 
           {/* Card 3: Translation Output (Lingo.dev SDK + TTS) */}
           <TranslationOutput
-            sentence={prediction?.sentence || ""}
+            sentence={
+              prediction?.sentence ||
+              "Hello, welcome to SignBridge. How are you?"
+            }
             targetLocale={targetLocale}
           />
 
