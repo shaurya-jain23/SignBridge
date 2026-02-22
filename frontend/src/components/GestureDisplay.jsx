@@ -2,12 +2,12 @@
  * GestureDisplay — shows the currently detected gesture with confidence bar.
  * Matches Stitch reference: large glowing letter + confidence bar on the right.
  */
-export default function GestureDisplay({ label, word, confidence }) {
+export default function GestureDisplay({ label, word, confidence, type }) {
   const confidencePercent = Math.round((confidence || 0) * 100);
+  const isDynamic = type === "dynamic";
 
   // Glass panel classes (reusable)
-  const glassPanel =
-    "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]";
+  const glassPanel = `bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-white/10 ${isDynamic ? "hover:shadow-[0_0_15px_rgba(168,85,247,0.1)]" : "hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]"}`;
 
   if (!label || label === "Unknown" || confidence < 0) {
     return (
@@ -46,15 +46,21 @@ export default function GestureDisplay({ label, word, confidence }) {
       className={`${glassPanel} p-5 rounded-2xl flex items-center justify-between gap-6 relative overflow-hidden hover:scale-[1.01]`}
       key={label}
     >
-      <div className="absolute right-0 top-0 w-32 h-32 bg-[#14b8a5]/10 rounded-full blur-[50px] pointer-events-none"></div>
+      <div
+        className={`absolute right-0 top-0 w-32 h-32 rounded-full blur-[50px] pointer-events-none transition-colors duration-500 ${isDynamic ? "bg-purple-500/10" : "bg-[#14b8a5]/10"}`}
+      ></div>
 
       <div className="flex flex-col gap-1 z-10">
         <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">
-          Current Gesture
+          Current {isDynamic ? "Phrase" : "Gesture"}
         </span>
         <h2
-          className="text-6xl font-black text-white tracking-tighter"
-          style={{ textShadow: "0 0 20px rgba(20, 184, 165, 0.5)" }}
+          className={`${label.length > 1 ? "text-4xl capitalize" : "text-6xl uppercase"} font-black text-white tracking-tighter transition-all duration-300`}
+          style={{
+            textShadow: isDynamic
+              ? "0 0 20px rgba(168, 85, 247, 0.5)"
+              : "0 0 20px rgba(20, 184, 165, 0.5)",
+          }}
         >
           {label}
         </h2>
@@ -65,13 +71,15 @@ export default function GestureDisplay({ label, word, confidence }) {
           <span className="text-xs text-slate-400 font-medium">
             Confidence Score
           </span>
-          <span className="text-lg font-bold text-[#14b8a5]">
+          <span
+            className={`text-lg font-bold transition-colors duration-300 ${isDynamic ? "text-purple-400" : "text-[#14b8a5]"}`}
+          >
             {confidencePercent}%
           </span>
         </div>
         <div className="h-2 w-full bg-slate-700/50 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-[#14b8a5] to-emerald-400 rounded-full shadow-[0_0_10px_rgba(20,184,165,0.5)] transition-[width] duration-300 ease-out"
+            className={`h-full rounded-full transition-[width,background-color] duration-300 ease-out ${isDynamic ? "bg-gradient-to-r from-purple-500 to-fuchsia-400 shadow-[0_0_10px_rgba(168,85,247,0.5)]" : "bg-gradient-to-r from-[#14b8a5] to-emerald-400 shadow-[0_0_10px_rgba(20,184,165,0.5)]"}`}
             style={{ width: `${confidencePercent}%` }}
           />
         </div>
