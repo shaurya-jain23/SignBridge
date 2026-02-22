@@ -35,6 +35,10 @@ export function useWebSocket() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === "prediction") {
+            // Log dynamic predictions to help debug if the backend is actually sending them over WS
+            if (data.data && data.data.type === "dynamic") {
+              console.log("[WS] Dynamic Data received:", data.data);
+            }
             setPrediction(data.data);
           } else if (data.error) {
             setError(data.error);

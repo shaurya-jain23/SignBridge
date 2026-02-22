@@ -6,6 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   server: {
+    // Allows external tunneling like ngrok/localtunnel for Web Speech API HTTPS testing
+    host: true,
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: "http://localhost:8000",
