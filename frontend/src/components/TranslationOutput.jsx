@@ -1,14 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LingoDotDevEngine } from "lingo.dev/sdk";
-
-// Initialize Lingo.dev engine using full Vite proxy URL to bypass CORS
-const lingo = new LingoDotDevEngine({
-  apiKey: import.meta.env.VITE_LINGO_API_KEY,
-  apiUrl: `${window.location.origin}/lingo-api`, // Proxied via vite.config.js
-});
 
 /**
- * TranslationOutput — translates the recognized sentence via Lingo.dev JS SDK
+ * TranslationOutput — translates the recognized sentence via Lingo.dev Python SDK backend proxy
  * and speaks it using Web Speech API TTS.
  */
 export default function TranslationOutput({ sentence, targetLocale }) {
@@ -54,12 +47,22 @@ export default function TranslationOutput({ sentence, targetLocale }) {
 
     setIsTranslating(true);
     try {
-      const translated = await lingo.localizeText(text, {
-        sourceLocale: "en",
-        targetLocale: locale,
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          target_locale: locale,
+          source_locale: "en",
+        }),
       });
-      setTranslatedText(translated);
-      lastTranslatedRef.current = { text, locale };
+      const data = await res.json();
+      if (data.translated_text) {
+        setTranslatedText(data.translated_text);
+        lastTranslatedRef.current = { text, locale };
+      } else {
+        throw new Error(data.error || "Unknown translation error");
+      }
     } catch (err) {
       console.error("Lingo.dev translation failed:", err);
       setTranslatedText(text); // fallback to original
