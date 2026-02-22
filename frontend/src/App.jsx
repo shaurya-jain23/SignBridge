@@ -5,6 +5,7 @@ import GestureDisplay from "./components/GestureDisplay";
 import SentenceBuilder from "./components/SentenceBuilder";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import TranslationOutput from "./components/TranslationOutput";
+import TwoWayChat from "./components/TwoWayChat";
 
 const glassPanel =
   "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]";
@@ -49,7 +50,7 @@ export default function App() {
 
           {/* Badge */}
           <div className="px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide">
-            Phase 2
+            Phase 4
           </div>
 
           {/* Language Switcher */}
@@ -87,6 +88,7 @@ export default function App() {
             label={prediction?.label}
             word={prediction?.word}
             confidence={prediction?.confidence}
+            type={prediction?.type}
           />
 
           {/* Card 2: Sentence Builder */}
@@ -101,7 +103,10 @@ export default function App() {
             targetLocale={targetLocale}
           />
 
-          {/* Card 4: System Status Compact */}
+          {/* Card 4: Speech-To-Text STT (Web Speech API) */}
+          <TwoWayChat targetLocale={targetLocale} />
+
+          {/* Card 5: System Status Compact */}
           <div className="grid grid-cols-3 gap-3">
             <div
               className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default`}
@@ -119,15 +124,19 @@ export default function App() {
               </span>
             </div>
             <div
-              className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default`}
+              className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default transition-colors duration-300 ${prediction?.type === "dynamic" ? "bg-purple-900/30 border-purple-500/30" : ""}`}
             >
-              <span className="material-symbols-outlined text-blue-400 text-xl">
+              <span
+                className={`material-symbols-outlined text-xl ${prediction?.type === "dynamic" ? "text-purple-400" : "text-blue-400"}`}
+              >
                 psychology
               </span>
               <span className="text-[10px] text-slate-400 uppercase font-bold">
                 AI Model
               </span>
-              <span className="text-xs text-white font-mono">TFLite</span>
+              <span className="text-xs text-white font-mono">
+                {prediction?.type === "dynamic" ? "LSTM" : "TFLite"}
+              </span>
             </div>
             <div
               className={`${glassPanel} p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-white/5 cursor-default`}
