@@ -19,6 +19,7 @@ import numpy as np
 import mediapipe as mp
 
 from model.keypoint_classifier.keypoint_classifier import KeyPointClassifier
+from .dynamic_gesture_service import DynamicGestureService
 
 logger = logging.getLogger("signbridge")
 
@@ -60,13 +61,14 @@ class GestureService:
         )
         self.hand_landmarker = HandLandmarker.create_from_options(options)
 
-        # TFLite classifier (84 features: both hands)
+        # Initialize TFLite KeyPointClassifier (Alphabet)
         self.keypoint_classifier = KeyPointClassifier()
-
-        # Load labels
         self.keypoint_labels = self._load_labels(KEYPOINT_LABEL_PATH)
+        
+        # Initialize Dynamic Gesture Service (Motion phrases)
+        self.dynamic_service = DynamicGestureService()
 
-        # Prediction smoothing — rolling window
+        # Sentence Builder State
         self.prediction_buffer = deque(maxlen=10)
 
         # Sentence builder state
@@ -102,12 +104,16 @@ class GestureService:
         # Decode base64 → numpy image
         img_bytes = base64.b64decode(base64_frame)
         np_arr = np.frombuffer(img_bytes, dtype=np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        try:
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            logger.error(f"Image decode error: {e}")
+            return self._empty_prediction()
 
         if frame is None:
             return self._empty_prediction()
 
-        # Flip horizontally (mirror) and convert BGR → RGB
+        # Flip horizontally (mirror) first, since both static and dynamic expect user perspective
         frame = cv2.flip(frame, 1)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -120,6 +126,7 @@ class GestureService:
         if not result.hand_landmarks:
             self._reset_hold()
             self.prediction_buffer.clear()
+            self.dynamic_service.sequence.clear() # Clear dynamic window if no hands seen
             return self._empty_prediction()
 
         h, w = frame_rgb.shape[:2]
@@ -136,10 +143,28 @@ class GestureService:
             elif hand_label == "Left":
                 left_lm_raw = result.hand_landmarks[i]
 
-        # If only one hand detected, use it as right
+        # If only one hand detected, use it as right fallback
         if right_lm_raw is None and left_lm_raw is None:
-            # Fallback: use first detected hand as right
             right_lm_raw = result.hand_landmarks[0]
+
+        # Priority Logic: Run Dynamic Gesture Service
+        left_list = left_lm_raw if left_lm_raw else []
+        right_list = right_lm_raw if right_lm_raw else []
+
+        dynamic_pred = self.dynamic_service.process_frame_landmarks(left_list, right_list)
+        if dynamic_pred:
+            self._update_sentence(dynamic_pred["word"])
+            return {
+                "gesture_id": -1, # Dynamic
+                "label": dynamic_pred["word"],
+                "word": dynamic_pred["word"],
+                "confidence": dynamic_pred["confidence"],
+                "landmarks": [], # Suppress heavy landmarks for frontend performance
+                "sentence": " ".join(self.sentence),
+                "type": "dynamic"
+            }
+            
+        # Fallback: Static Alphabet Recognition
 
         # Extract pixel landmarks for each hand
         right_features = self._extract_and_process(right_lm_raw, w, h) if right_lm_raw else [0.0] * FEATURES_PER_HAND
