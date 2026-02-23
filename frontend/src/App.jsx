@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import WebcamFeed from "./components/WebcamFeed";
 import GestureDisplay from "./components/GestureDisplay";
@@ -13,6 +13,36 @@ const glassPanel =
 export default function App() {
   const { isConnected, prediction, error, sendFrame } = useWebSocket();
   const [targetLocale, setTargetLocale] = useState("en");
+
+  // Mode & Sentence Pipeline State
+  const [mode, setMode] = useState("hybrid");
+  const [currentWord, setCurrentWord] = useState("");
+  const [sentence, setSentence] = useState([]);
+  const [lastStaticLabel, setLastStaticLabel] = useState(null);
+
+  // Parse incoming predictions into the sentence array
+  useEffect(() => {
+    if (!prediction) return;
+
+    if (
+      prediction.type === "static" &&
+      prediction.label &&
+      prediction.label !== "Unknown"
+    ) {
+      if (prediction.label !== lastStaticLabel) {
+        setCurrentWord((prev) => prev + prediction.label);
+        setLastStaticLabel(prediction.label);
+      }
+    } else if (prediction.type === "dynamic" && prediction.word) {
+      setSentence((prev) => [...prev, prediction.word]);
+      setLastStaticLabel(null);
+    } else {
+      // None or empty prediction clears the latch so double letters (e.g., 'LL') are possible
+      setLastStaticLabel(null);
+    }
+  }, [prediction]);
+
+  const fullSentence = [...sentence, currentWord].filter(Boolean).join(" ");
 
   return (
     <div className="flex flex-col h-screen max-h-screen overflow-hidden bg-[linear-gradient(135deg,#0a0a1a_0%,#0d1b2a_100%)] text-slate-100 font-[Inter,sans-serif] selection:bg-[#14b8a5] selection:text-white">
@@ -48,8 +78,25 @@ export default function App() {
             </span>
           </div>
 
+          {/* Mode Selector */}
+          <div className="flex bg-[#0f172a] rounded-lg p-1 border border-white/10">
+            {["static", "hybrid", "dynamic"].map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all capitalize ${
+                  mode === m
+                    ? "bg-[#14b8a5] text-white shadow-md shadow-[#14b8a5]/20"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
           {/* Badge */}
-          <div className="px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide">
+          <div className="hidden lg:block px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide">
             Phase 4
           </div>
 
@@ -68,8 +115,9 @@ export default function App() {
           className={`flex flex-col flex-1 min-h-[300px] lg:h-full relative rounded-2xl overflow-hidden group ${glassPanel}`}
         >
           <WebcamFeed
-            sendFrame={sendFrame}
+            sendFrame={(f) => sendFrame(f, mode)}
             landmarks={prediction?.landmarks || []}
+            poseLandmarks={prediction?.pose_landmarks || []}
             isConnected={isConnected}
           />
           {error && (
@@ -92,13 +140,30 @@ export default function App() {
           />
 
           {/* Card 2: Sentence Builder */}
-          <SentenceBuilder sentence={prediction?.sentence || ""} />
+          <SentenceBuilder
+            sentence={sentence}
+            currentWord={currentWord}
+            onSpace={() => {
+              if (currentWord) {
+                setSentence((prev) => [...prev, currentWord]);
+                setCurrentWord("");
+                setLastStaticLabel(null);
+              }
+            }}
+            onClearWord={() => setCurrentWord("")}
+            onClearSentence={() => {
+              setSentence([]);
+              setCurrentWord("");
+              setLastStaticLabel(null);
+              // Call API if needed or rely entirely on frontend state
+              fetch("/api/clear-sentence", { method: "POST" }).catch(() => {});
+            }}
+          />
 
           {/* Card 3: Translation Output (Lingo.dev SDK + TTS) */}
           <TranslationOutput
             sentence={
-              prediction?.sentence ||
-              "Hello, welcome to SignBridge. How are you?"
+              fullSentence || "Hello, welcome to SignBridge. How are you?"
             }
             targetLocale={targetLocale}
           />
