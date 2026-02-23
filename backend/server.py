@@ -33,7 +33,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("signbridge")
 
 # ---------------------------------------------------------------------------
@@ -156,13 +156,14 @@ async def websocket_endpoint(ws: WebSocket):
             try:
                 message = json.loads(data)
                 frame_data: Optional[str] = message.get("frame")
+                mode: str = message.get("mode", "hybrid")
 
                 if frame_data is None:
                     await ws.send_json({"error": "No frame data received"})
                     continue
 
-                # Real inference via GestureService
-                prediction = gesture_service.process_frame(frame_data)
+                # Real inference via GestureService with Mode routing
+                prediction = gesture_service.process_frame(frame_data, mode)
 
                 response = {
                     "type": "prediction",

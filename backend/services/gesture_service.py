@@ -68,15 +68,9 @@ class GestureService:
         # Initialize Dynamic Gesture Service (Motion phrases)
         self.dynamic_service = DynamicGestureService()
 
-        # Sentence Builder State
+        # Static Prediction Smoothing State
+        # Requires 8 out of 10 identical frames to emit a letter
         self.prediction_buffer = deque(maxlen=10)
-
-        # Sentence builder state
-        self.current_gesture = None
-        self.gesture_hold_count = 0
-        self.hold_threshold = 15  # ~1.5s at 10fps
-        self.sentence: list[str] = []
-        self.last_added_label = None
 
         logger.info(
             f"GestureService initialized — "
@@ -97,9 +91,10 @@ class GestureService:
     # ------------------------------------------------------------------
     # Core inference
     # ------------------------------------------------------------------
-    def process_frame(self, base64_frame: str) -> dict:
+    def process_frame(self, base64_frame: str, mode: str = "hybrid") -> dict:
         """
         Decode a base64 JPEG frame, run MediaPipe + TFLite, return result dict.
+        Routes logic based on selected mode ("static", "dynamic", "hybrid").
         """
         # Decode base64 → numpy image
         img_bytes = base64.b64decode(base64_frame)
@@ -124,9 +119,6 @@ class GestureService:
         result = self.hand_landmarker.detect(mp_image)
 
         if not result.hand_landmarks:
-            self._reset_hold()
-            self.prediction_buffer.clear()
-            self.dynamic_service.sequence.clear() # Clear dynamic window if no hands seen
             return self._empty_prediction()
 
         h, w = frame_rgb.shape[:2]
@@ -147,61 +139,74 @@ class GestureService:
         if right_lm_raw is None and left_lm_raw is None:
             right_lm_raw = result.hand_landmarks[0]
 
-        # Priority Logic: Run Dynamic Gesture Service
         left_list = left_lm_raw if left_lm_raw else []
         right_list = right_lm_raw if right_lm_raw else []
-
-        dynamic_pred = self.dynamic_service.process_frame_landmarks(left_list, right_list)
-        if dynamic_pred:
-            self._update_sentence(dynamic_pred["word"])
-            return {
-                "gesture_id": -1, # Dynamic
-                "label": dynamic_pred["word"],
-                "word": dynamic_pred["word"],
-                "confidence": dynamic_pred["confidence"],
-                "landmarks": [], # Suppress heavy landmarks for frontend performance
-                "sentence": " ".join(self.sentence),
-                "type": "dynamic"
-            }
-            
-        # Fallback: Static Alphabet Recognition
-
-        # Extract pixel landmarks for each hand
-        right_features = self._extract_and_process(right_lm_raw, w, h) if right_lm_raw else [0.0] * FEATURES_PER_HAND
-        left_features = self._extract_and_process(left_lm_raw, w, h) if left_lm_raw else [0.0] * FEATURES_PER_HAND
-
-        # Concatenate both hands → 84 features
-        combined_features = right_features + left_features
-
-        # Classify via TFLite
-        gesture_id = self.keypoint_classifier(combined_features)
-
-        # Get label
-        label = self.keypoint_labels[gesture_id] if gesture_id < len(self.keypoint_labels) else "Unknown"
-
-        # Prediction smoothing
-        self.prediction_buffer.append(gesture_id)
-        smoothed_id, confidence = self._get_smoothed_prediction()
-        smoothed_label = self.keypoint_labels[smoothed_id] if smoothed_id < len(self.keypoint_labels) else "Unknown"
-
-        # Sentence building
-        self._update_sentence(smoothed_label)
 
         # Collect all landmarks for frontend overlay (0-1 range)
         all_landmarks = []
         for hand_landmarks in result.hand_landmarks:
             for lm in hand_landmarks:
                 all_landmarks.append({"x": lm.x, "y": lm.y})
+                
+        # Grab the latest pose landmarks from the dynamic service (populated during detection)
+        current_pose_landmarks = getattr(self.dynamic_service, 'latest_pose_landmarks', [])
 
-        return {
-            "gesture_id": int(smoothed_id),
-            "label": smoothed_label,
-            "word": smoothed_label,
-            "confidence": round(float(confidence), 2),
-            "landmarks": all_landmarks,
-            "sentence": " ".join(self.sentence),
-        }
+        # ------------------------------------------------------------------
+        # Dynamic Mode Processing (Words/Phrases)
+        # ------------------------------------------------------------------
+        if mode in ["dynamic", "hybrid"]:
+            dynamic_pred = self.dynamic_service.process_frame(frame_rgb)
+            if dynamic_pred:
+                logger.debug(f"[ROUTER] Emitting Dynamic Phrase: {dynamic_pred['word']}")
+                return {
+                    "gesture_id": -1, # Dynamic
+                    "label": dynamic_pred["word"],
+                    "word": dynamic_pred["word"],
+                    "confidence": dynamic_pred["confidence"],
+                    "landmarks": all_landmarks,
+                    "pose_landmarks": current_pose_landmarks,
+                    "type": "dynamic"
+                }
 
+        # ------------------------------------------------------------------
+        # Static Mode Processing (Letters ONLY)
+        # ------------------------------------------------------------------
+        if mode in ["static", "hybrid"]:
+            # Extract pixel landmarks for each hand
+            right_features = self._extract_and_process(right_lm_raw, w, h) if right_lm_raw else [0.0] * FEATURES_PER_HAND
+            left_features = self._extract_and_process(left_lm_raw, w, h) if left_lm_raw else [0.0] * FEATURES_PER_HAND
+    
+            # Concatenate both hands → 84 features
+            combined_features = right_features + left_features
+    
+            # Classify via TFLite
+            gesture_id = self.keypoint_classifier(combined_features)
+    
+            # Update Smoothing Buffer
+            self.prediction_buffer.append(gesture_id)
+            smoothed_id, confidence = self._get_smoothed_prediction()
+    
+            # Strict Stable Output: Emit letter only if it dominates 80% of window
+            if confidence >= 0.8:
+                smoothed_label = self.keypoint_labels[smoothed_id] if smoothed_id < len(self.keypoint_labels) else "Unknown"
+                
+                # In strict static mode, we only return the static prediction.
+                # In hybrid mode, if dynamic didn't trigger, we fallback to static letter.
+                return {
+                    "gesture_id": int(smoothed_id),
+                    "label": smoothed_label,
+                    "word": smoothed_label,
+                    "confidence": confidence,
+                    "landmarks": all_landmarks,
+                    "pose_landmarks": current_pose_landmarks,
+                    "type": "static"
+                }
+
+        # If nothing triggered above the thresholds, return empty prediction but keep the skeleton active
+        empty_pred = self._empty_prediction()
+        empty_pred["landmarks"] = all_landmarks
+        empty_pred["pose_landmarks"] = current_pose_landmarks
+        return empty_pred
     # ------------------------------------------------------------------
     # Feature extraction per hand
     # ------------------------------------------------------------------
@@ -256,42 +261,15 @@ class GestureService:
 
         return most_common_id, confidence
 
-    # ------------------------------------------------------------------
-    # Sentence builder
-    # ------------------------------------------------------------------
-    def _update_sentence(self, label: str):
-        """Track gesture hold duration and add to sentence when threshold met."""
-        if label == self.current_gesture:
-            self.gesture_hold_count += 1
-        else:
-            self.current_gesture = label
-            self.gesture_hold_count = 1
-
-        if self.gesture_hold_count >= self.hold_threshold:
-            if label != self.last_added_label:
-                self.sentence.append(label)
-                self.last_added_label = label
-                logger.info(f"Sentence: {' '.join(self.sentence)}")
-
-    def _reset_hold(self):
-        """Reset hold tracking when no hand is detected."""
-        self.current_gesture = None
-        self.gesture_hold_count = 0
-        self.last_added_label = None
-
-    def clear_sentence(self):
-        """Clear the sentence buffer."""
-        self.sentence = []
-        self.last_added_label = None
-        self.gesture_hold_count = 0
-
     def _empty_prediction(self) -> dict:
-        """Return an empty prediction when no hand is detected."""
+        """Returns a standardized empty prediction payload."""
         return {
             "gesture_id": -1,
-            "label": None,
-            "word": None,
+            "label": "",
+            "word": "",
             "confidence": 0.0,
             "landmarks": [],
-            "sentence": " ".join(self.sentence),
+            "pose_landmarks": getattr(self.dynamic_service, 'latest_pose_landmarks', []),
+            "type": "none"
         }
+
