@@ -67,10 +67,10 @@ export function useWebSocket() {
     }
   }, []);
 
-  // Send a video frame to the backend
-  const sendFrame = useCallback((base64Frame) => {
+  // Send a video frame to the backend with the current mode
+  const sendFrame = useCallback((base64Frame, mode = "hybrid") => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ frame: base64Frame }));
+      wsRef.current.send(JSON.stringify({ frame: base64Frame, mode }));
     }
   }, []);
 
