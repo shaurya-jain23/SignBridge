@@ -1,32 +1,82 @@
+# ========================
 # Python
-backend/venv/
+# ========================
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+ENV/
+
+# ========================
+# Environment / Secrets
+# ========================
 .env
-backend/MP_Data/*
+
+# ========================
+# Backend
+# ========================
+backend/venv/
+backend/MP_Data/
 backend/backend_logs.txt
 
-# Logs
-*.log
+# Large training data (>50MB — regenerate via scripts/convert_kaggle_to_keypoint_csv.py)
+backend/model/keypoint_classifier/keypoint.csv
 
-# Node
-frontend/node_modules/
-frontend/dist/
+# ========================
+# MediaPipe model binaries (downloadable — see README)
+# ========================
+*.task
 
-# Lingo.dev
-frontend/.lingo/
+# ========================
+# Node / Frontend
+# ========================
+node_modules/
+dist/
+dist-ssr/
+*.local
 frontend/src/lingo/
+frontend/.lingo/
 
-# IDE
+# ========================
+# Jupyter
+# ========================
+.ipynb_checkpoints/
+
+# ========================
+# Logs
+# ========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ========================
+# IDE / Editor
+# ========================
 .idea/
 .vscode/
 *.swp
 *.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
+# ========================
 # OS
+# ========================
 .DS_Store
 Thumbs.db
 
-# Model data (large files)
-*.task
+# ========================
+# hand-gesture-recognition-mediapipe (upstream reference)
+# ========================
+hand-gesture-recognition-mediapipe/.venv/
+hand-gesture-recognition-mediapipe/venv/
+hand-gesture-recognition-mediapipe/__pycache__/
