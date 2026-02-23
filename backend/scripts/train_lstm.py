@@ -12,7 +12,7 @@ DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'MP_Data', 'datasaved'
 actions = np.array(['happy', 'hello', 'iloveyou', 'ok', 'sad', 'thanks'])
 no_sequences = 60
 sequence_length = 30
-feature_size = 126 # Bypassing Holistic (1662) -> Using only Hands (1536:1662)
+feature_size = 1662 # Full Holistic Pipeline (Pose, Face, LH, RH)
 
 model_dir = os.path.join(os.path.dirname(__file__), '..', 'model', 'lstm_classifier')
 os.makedirs(model_dir, exist_ok=True)
@@ -36,8 +36,7 @@ for action in actions:
         window = []
         for frame_num in range(sequence_length):
             res = np.load(os.path.join(DATA_PATH, action, str(sequence), "{}.npy".format(frame_num)))
-            # Slice to only extract LH (63) and RH (63) features
-            res = res[1536:] 
+            # Use full 1662 features
             window.append(res)
         sequences.append(window)
         labels.append(label_map[action])
