@@ -6,6 +6,7 @@ import SentenceBuilder from "./components/SentenceBuilder";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import TranslationOutput from "./components/TranslationOutput";
 import TwoWayChat from "./components/TwoWayChat";
+import PhraseHistory from "./components/PhraseHistory"; // Added import
 
 const glassPanel =
   "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]";
@@ -19,6 +20,17 @@ export default function App() {
   const [currentWord, setCurrentWord] = useState("");
   const [sentence, setSentence] = useState([]);
   const [lastStaticLabel, setLastStaticLabel] = useState(null);
+
+  // Phase 5: Phrase Library History
+  const [phraseHistory, setPhraseHistory] = useState([]); // Added state
+
+  // Basic English TTS hook for committed phrases
+  const speakText = (text) => {
+    if (!text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    window.speechSynthesis.speak(utterance);
+  };
 
   // Parse incoming predictions into the sentence array
   useEffect(() => {
@@ -97,7 +109,7 @@ export default function App() {
 
           {/* Badge */}
           <div className="hidden lg:block px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide">
-            Phase 4
+            Phase 5
           </div>
 
           {/* Language Switcher */}
@@ -152,13 +164,24 @@ export default function App() {
             }}
             onClearWord={() => setCurrentWord("")}
             onClearSentence={() => {
+              if (sentence.length > 0 || currentWord) {
+                const finalSentence = [...sentence, currentWord]
+                  .filter(Boolean)
+                  .join(" ");
+                if (finalSentence) {
+                  setPhraseHistory((prev) => [...prev, finalSentence]);
+                  speakText(finalSentence);
+                }
+              }
               setSentence([]);
               setCurrentWord("");
               setLastStaticLabel(null);
-              // Call API if needed or rely entirely on frontend state
               fetch("/api/clear-sentence", { method: "POST" }).catch(() => {});
             }}
           />
+
+          {/* Card 2.5: Phrase History */}
+          <PhraseHistory history={phraseHistory} />
 
           {/* Card 3: Translation Output (Lingo.dev SDK + TTS) */}
           <TranslationOutput
