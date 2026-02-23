@@ -7,7 +7,12 @@ const FRAME_INTERVAL_MS = 100; // ~10 fps
  * Draws hand landmarks on a canvas overlay when received from the server.
  * Styled with Tailwind utility classes based on Stitch's generated HTML.
  */
-export default function WebcamFeed({ sendFrame, landmarks, isConnected }) {
+export default function WebcamFeed({
+  sendFrame,
+  landmarks,
+  poseLandmarks,
+  isConnected,
+}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const captureCanvasRef = useRef(null);
@@ -76,6 +81,54 @@ export default function WebcamFeed({ sendFrame, landmarks, isConnected }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Draw pose landmarks (Upper body skeleton)
+    if (poseLandmarks && poseLandmarks.length > 0) {
+      // Helper to find specific point
+      const getPosePt = (idx) => poseLandmarks.find((p) => p.index === idx);
+
+      const lShoulder = getPosePt(11);
+      const rShoulder = getPosePt(12);
+      const lElbow = getPosePt(13);
+      const rElbow = getPosePt(14);
+      const lWrist = getPosePt(15);
+      const rWrist = getPosePt(16);
+
+      const drawBone = (pt1, pt2) => {
+        if (!pt1 || !pt2 || pt1.visibility < 0.5 || pt2.visibility < 0.5)
+          return;
+        ctx.beginPath();
+        ctx.moveTo(pt1.x * canvas.width, pt1.y * canvas.height);
+        ctx.lineTo(pt2.x * canvas.width, pt2.y * canvas.height);
+        ctx.strokeStyle = "rgba(167, 139, 250, 0.4)"; // Purple-400 transparent
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      };
+
+      // Connect skeleton
+      drawBone(lShoulder, rShoulder);
+      drawBone(lShoulder, lElbow);
+      drawBone(lElbow, lWrist);
+      drawBone(rShoulder, rElbow);
+      drawBone(rElbow, rWrist);
+
+      // Draw joints
+      poseLandmarks.forEach((point) => {
+        if (point.visibility < 0.5) return;
+        ctx.beginPath();
+        ctx.arc(
+          point.x * canvas.width,
+          point.y * canvas.height,
+          5,
+          0,
+          2 * Math.PI,
+        );
+        ctx.fillStyle = "#a855f7"; // Purple-500
+        ctx.fill();
+        ctx.strokeStyle = "rgba(168, 85, 247, 0.5)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    }
 
     if (!landmarks || landmarks.length === 0) return;
 
@@ -94,7 +147,7 @@ export default function WebcamFeed({ sendFrame, landmarks, isConnected }) {
       ctx.lineWidth = 2;
       ctx.stroke();
     });
-  }, [landmarks]);
+  }, [landmarks, poseLandmarks]);
 
   if (cameraError) {
     return (
