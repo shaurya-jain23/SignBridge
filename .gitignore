@@ -5,6 +5,7 @@ __pycache__/
 *.pyo
 .env
 backend/MP_Data/*
+backend/backend_logs.txt
 
 # Logs
 *.log
