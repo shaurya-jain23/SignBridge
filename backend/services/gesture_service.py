@@ -20,6 +20,7 @@ import mediapipe as mp
 
 from model.keypoint_classifier.keypoint_classifier import KeyPointClassifier
 from .dynamic_gesture_service import DynamicGestureService
+from .phrase_mapper import format_gesture_label
 
 logger = logging.getLogger("signbridge")
 
@@ -157,11 +158,12 @@ class GestureService:
         if mode in ["dynamic", "hybrid"]:
             dynamic_pred = self.dynamic_service.process_frame(frame_rgb)
             if dynamic_pred:
-                logger.debug(f"[ROUTER] Emitting Dynamic Phrase: {dynamic_pred['word']}")
+                formatted_phrase = format_gesture_label(dynamic_pred['word'])
+                logger.debug(f"[ROUTER] Emitting Dynamic Phrase: {formatted_phrase}")
                 return {
                     "gesture_id": -1, # Dynamic
-                    "label": dynamic_pred["word"],
-                    "word": dynamic_pred["word"],
+                    "label": formatted_phrase,
+                    "word": formatted_phrase,
                     "confidence": dynamic_pred["confidence"],
                     "landmarks": all_landmarks,
                     "pose_landmarks": current_pose_landmarks,
@@ -188,14 +190,15 @@ class GestureService:
     
             # Strict Stable Output: Emit letter only if it dominates 80% of window
             if confidence >= 0.8:
-                smoothed_label = self.keypoint_labels[smoothed_id] if smoothed_id < len(self.keypoint_labels) else "Unknown"
+                raw_label = self.keypoint_labels[smoothed_id] if smoothed_id < len(self.keypoint_labels) else "Unknown"
+                formatted_label = format_gesture_label(raw_label)
                 
                 # In strict static mode, we only return the static prediction.
                 # In hybrid mode, if dynamic didn't trigger, we fallback to static letter.
                 return {
                     "gesture_id": int(smoothed_id),
-                    "label": smoothed_label,
-                    "word": smoothed_label,
+                    "label": formatted_label,
+                    "word": formatted_label,
                     "confidence": confidence,
                     "landmarks": all_landmarks,
                     "pose_landmarks": current_pose_landmarks,
