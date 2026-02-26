@@ -276,3 +276,10 @@ class GestureService:
             "type": "none"
         }
 
+    def clear_sentence(self):
+        """Clears the internal buffers for static and dynamic predictions."""
+        self.prediction_buffer.clear()
+        if self.dynamic_service:
+            self.dynamic_service.sequence.clear()
+            self.dynamic_service.predictions.clear()
+
