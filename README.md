@@ -20,7 +20,6 @@ The application offers a fully localized experience powered by the **Lingo.dev S
 - **Multilingual Two-Way Translation:** Translates the generated English sentences into various global locales (Spanish, Hindi, French, Japanese, etc.) via the Lingo.dev API.
 - **Audio Synthesis (TTS):** Speaks out the translated texts natively using browser Web Speech API bound to locale-specific BCP-47 voice tags.
 - **Phrase Library & History:** Automatically maps raw ML gesture outputs to conversational, grammatically-correct sentences and logs them in a scrollable history timeline.
-- **Beautiful UI:** A dark-glassmorphism interface built with Tailwind CSS, featuring a dynamic purple "Pose Skeleton" visualizer that elegantly renders MediaPipe point landmarks over the user's camera feed.
 
 ## Technology Stack 🛠️
 
