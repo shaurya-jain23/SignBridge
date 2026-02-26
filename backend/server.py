@@ -142,12 +142,74 @@ async def translate_text(req: TranslateRequest):
 
 
 # ---------------------------------------------------------------------------
-# WebSocket — Real-time video frame processing
+# Room Validation Endpoints
 # ---------------------------------------------------------------------------
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
-    await ws.accept()
-    logger.info("WebSocket client connected")
+class RoomCreateRequest(BaseModel):
+    room_id: str
+
+@app.post("/api/rooms")
+async def create_room_api(req: RoomCreateRequest):
+    """Register a new room."""
+    manager.create_room(req.room_id)
+    return {"status": "ok", "room_id": req.room_id}
+
+@app.get("/api/rooms/{room_id}")
+async def check_room_api(room_id: str):
+    """Check if a room exists."""
+    if manager.room_exists(room_id):
+        return {"status": "ok", "exists": True}
+    return {"status": "error", "exists": False, "message": "Room not found"}
+
+
+# ---------------------------------------------------------------------------
+# Room-Based WebSocket Connection Manager
+# ---------------------------------------------------------------------------
+class ConnectionManager:
+    def __init__(self):
+        # room_id -> list of WebSockets
+        self.active_connections: dict[str, list[WebSocket]] = {}
+        self.created_rooms = set()  # Store valid room IDs
+
+    def create_room(self, room_id: str):
+        self.created_rooms.add(room_id)
+
+    def room_exists(self, room_id: str) -> bool:
+        return room_id in self.created_rooms
+
+    async def connect(self, ws: WebSocket, room_id: str):
+        if not self.room_exists(room_id):
+            await ws.close(code=4004, reason="Room not found")
+            raise WebSocketDisconnect(code=4004, reason="Room not found")
+            
+        await ws.accept()
+        if room_id not in self.active_connections:
+            self.active_connections[room_id] = []
+        self.active_connections[room_id].append(ws)
+        logger.info(f"Client joined room: {room_id}. Total clients: {len(self.active_connections[room_id])}")
+
+    def disconnect(self, ws: WebSocket, room_id: str):
+        if room_id in self.active_connections and ws in self.active_connections[room_id]:
+            self.active_connections[room_id].remove(ws)
+            if not self.active_connections[room_id]:
+                del self.active_connections[room_id]
+            logger.info(f"Client left room: {room_id}")
+
+    async def broadcast(self, message: dict, room_id: str):
+        if room_id in self.active_connections:
+            for connection in self.active_connections[room_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Failed to send message: {e}")
+
+manager = ConnectionManager()
+
+# ---------------------------------------------------------------------------
+# WebSocket — Real-time video frame processing & Chat sync
+# ---------------------------------------------------------------------------
+@app.websocket("/ws/{room_id}")
+async def websocket_endpoint(ws: WebSocket, room_id: str):
+    await manager.connect(ws, room_id)
 
     try:
         while True:
@@ -155,22 +217,85 @@ async def websocket_endpoint(ws: WebSocket):
 
             try:
                 message = json.loads(data)
-                frame_data: Optional[str] = message.get("frame")
-                mode: str = message.get("mode", "hybrid")
+                msg_type = message.get("type", "frame")
 
-                if frame_data is None:
-                    await ws.send_json({"error": "No frame data received"})
-                    continue
+                if msg_type == "chat":
+                    # A completed message sent from Signer or Listener
+                    # We should translate it right here before broadcasting
+                    payload = message.get("payload", {})
+                    # payload should have: id, senderRole, senderName, inputType, originalText, originalLocale, translations
+                    original_text = payload.get("originalText", "")
+                    original_locale = payload.get("originalLocale", "en")
+                    
+                    # We will dynamically translate into standard locales for simplicity 
+                    # (in production this would be targeted based on room preferences)
+                    api_key = os.getenv("LINGODOTDEV_API_KEY")
+                    target_locales = ["en", "hi", "es", "fr"]
+                    translations = {}
+                    
+                    if api_key and original_text:
+                        from lingodotdev.engine import LingoDotDevEngine
+                        # Translate for a few major languages asynchronously
+                        import asyncio
+                        
+                        async def fetch_trans(t_loc):
+                            if t_loc == original_locale:
+                                return t_loc, original_text
+                            try:
+                                res = await LingoDotDevEngine.quick_translate(
+                                    original_text,
+                                    api_key=api_key,
+                                    source_locale=original_locale,
+                                    target_locale=t_loc,
+                                )
+                                return t_loc, res
+                            except Exception:
+                                return t_loc, original_text
 
-                # Real inference via GestureService with Mode routing
-                prediction = gesture_service.process_frame(frame_data, mode)
+                        tasks = [fetch_trans(l) for l in target_locales]
+                        results = await asyncio.gather(*tasks)
+                        for loc, txt in results:
+                            translations[loc] = txt
+                    else:
+                        translations[original_locale] = original_text
 
-                response = {
-                    "type": "prediction",
-                    "data": prediction,
-                }
+                    payload["translations"] = translations
+                    payload["status"] = "sent"
+                    
+                    # Broadcast the full Message object to everyone in the room
+                    await manager.broadcast({
+                        "type": "chat_sync",
+                        "data": payload
+                    }, room_id)
 
-                await ws.send_json(response)
+                elif msg_type == "presence":
+                    # Broadcast typing/signing status
+                    payload = message.get("payload", {})
+                    await manager.broadcast({
+                        "type": "presence_sync",
+                        "data": payload
+                    }, room_id)
+
+
+                elif msg_type == "frame":
+                    # Video frame processing path
+                    frame_data: Optional[str] = message.get("frame")
+                    mode: str = message.get("mode", "hybrid")
+
+                    if frame_data is None:
+                        await ws.send_json({"error": "No frame data received"})
+                        continue
+
+                    # Real inference via GestureService with Mode routing
+                    prediction = gesture_service.process_frame(frame_data, mode)
+
+                    response = {
+                        "type": "prediction",
+                        "data": prediction,
+                    }
+
+                    # Send predictions ONLY to the client that sent the frame (the signer)
+                    await ws.send_json(response)
 
             except json.JSONDecodeError:
                 try:
@@ -180,16 +305,17 @@ async def websocket_endpoint(ws: WebSocket):
             except WebSocketDisconnect:
                 break
             except Exception as e:
-                logger.error(f"Error processing frame: {e}")
+                logger.error(f"Error processing frame/chat: {e}")
                 try:
                     await ws.send_json({"error": str(e)})
                 except RuntimeError:
                     break
 
     except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected")
+        manager.disconnect(ws, room_id)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+        manager.disconnect(ws, room_id)
 
 
 # ---------------------------------------------------------------------------
