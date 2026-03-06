@@ -12,9 +12,9 @@ export default function GestureDisplay({ label, word, confidence, type }) {
   if (!label || label === "Unknown" || confidence < 0) {
     return (
       <div
-        className={`${glassPanel} p-5 rounded-2xl flex items-center justify-between gap-6 relative overflow-hidden`}
+        className={`${glassPanel} p-10 rounded-2xl flex items-center justify-between gap-6 relative overflow-hidden`}
       >
-        <div className="absolute right-0 top-0 w-32 h-32 bg-[#14b8a5]/10 rounded-full blur-[50px] pointer-events-none"></div>
+        {/* <div className="absolute right-0 top-0 w-32 h-32 bg-[#14b8a5]/10 rounded-full blur-[50px] pointer-events-none"></div> */}
         <div className="flex flex-col gap-1 z-10">
           <span className="text-sm font-medium text-slate-400 uppercase tracking-wider">
             Current Gesture
@@ -43,7 +43,7 @@ export default function GestureDisplay({ label, word, confidence, type }) {
 
   return (
     <div
-      className={`${glassPanel} p-5 rounded-2xl flex items-center justify-between gap-6 relative overflow-hidden hover:scale-[1.01]`}
+      className={`${glassPanel} p-10 rounded-2xl flex items-center justify-between gap-6 relative overflow-hidden hover:scale-[1.01]`}
       key={label}
     >
       <div

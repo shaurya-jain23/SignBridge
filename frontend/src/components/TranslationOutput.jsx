@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { API_BASE } from "../config";
 
 /**
  * TranslationOutput — translates the recognized sentence via Lingo.dev Python SDK backend proxy
@@ -47,7 +48,7 @@ export default function TranslationOutput({ sentence, targetLocale }) {
 
     setIsTranslating(true);
     try {
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`${API_BASE}/api/translate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

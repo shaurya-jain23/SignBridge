@@ -42,19 +42,46 @@ export default function PhraseHistory({ history = [] }) {
             <p>Your conversation history will appear here.</p>
           </div>
         ) : (
-          history.map((phrase, idx) => (
-            <div
-              key={idx}
-              className="bg-black/40 border border-white/5 rounded-lg px-4 py-3 flex items-start gap-3 group transition-colors hover:bg-black/60 hover:border-white/10 animate-fade-in-up"
-            >
-              <div className="mt-1 shrink-0 bg-purple-500/20 text-purple-400 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono">
-                {idx + 1}
+          history.map((item, idx) => {
+            const text = typeof item === "string" ? item : item.text;
+            const time = typeof item === "string" ? "" : item.timestamp;
+            return (
+              <div
+                key={idx}
+                className="bg-black/40 border border-white/5 rounded-lg p-3 flex flex-col gap-2 group transition-colors hover:bg-black/60 hover:border-white/10 animate-fade-in-up"
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-purple-500/20 text-purple-400 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono shrink-0">
+                      {idx + 1}
+                    </div>
+                    {time && (
+                      <span className="text-[10px] text-white/40 font-mono bg-white/5 px-2 py-0.5 rounded-full">
+                        {time}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!text) return;
+                      const utterance = new SpeechSynthesisUtterance(text);
+                      utterance.lang = "en-US";
+                      window.speechSynthesis.speak(utterance);
+                    }}
+                    className="p-1 rounded bg-white/5 hover:bg-[#14b8a5]/20 text-slate-400 hover:text-[#14b8a5] transition-colors"
+                    title="Speak phrase"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">
+                      volume_up
+                    </span>
+                  </button>
+                </div>
+                <p className="text-white/80 text-sm leading-relaxed font-medium pl-1">
+                  {text}
+                </p>
               </div>
-              <p className="text-white/80 text-sm leading-relaxed font-medium">
-                {phrase}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

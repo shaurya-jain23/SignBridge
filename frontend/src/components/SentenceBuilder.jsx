@@ -8,78 +8,28 @@ export default function SentenceBuilder({
   sentence = [],
   currentWord = "",
   onSpace,
-  onClearWord,
-  onClearSentence,
+  onBackspace,
+  onClearDraft,
+  onSendMessage,
 }) {
-  const [copied, setCopied] = useState(false);
-
   const glassPanel =
-    "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]";
+    "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300";
 
-  const handleCopy = () => {
-    const fullText = [...sentence, currentWord].filter(Boolean).join(" ");
-    if (fullText) {
-      navigator.clipboard.writeText(fullText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  };
+  const hasContent = sentence.length > 0 || currentWord.length > 0;
 
   return (
     <div className={`${glassPanel} p-5 rounded-2xl flex flex-col gap-4`}>
       <div className="flex justify-between items-center border-b border-white/5 pb-3">
         <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
           <span className="material-symbols-outlined text-[#14b8a5] text-sm">
-            format_quote
+            edit_document
           </span>
-          Active Sentence
+          Composer
         </h3>
-        <div className="flex gap-2">
-          <button
-            onClick={onSpace}
-            disabled={!currentWord}
-            className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Add Space (Push Word)"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              space_bar
-            </span>
-          </button>
-          <button
-            onClick={onClearWord}
-            disabled={!currentWord}
-            className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 hover:text-orange-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Clear Current Word"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              backspace
-            </span>
-          </button>
-          <button
-            onClick={onClearSentence}
-            disabled={sentence.length === 0 && !currentWord}
-            className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Clear Entire Sentence"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              delete
-            </span>
-          </button>
-          <div className="w-px h-5 bg-white/10 mx-1 my-auto"></div>
-          <button
-            onClick={handleCopy}
-            className="p-1.5 hover:bg-white/10 rounded-md text-slate-400 hover:text-[#14b8a5] transition-colors cursor-pointer"
-            title="Copy Text"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              {copied ? "check" : "content_copy"}
-            </span>
-          </button>
-        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 min-h-[80px] items-start content-start">
-        {sentence.length === 0 && !currentWord ? (
+        {!hasContent ? (
           <span className="text-slate-500 text-sm italic py-1.5 w-full text-center">
             Form static letters or perform dynamic gestures...
           </span>
@@ -104,6 +54,57 @@ export default function SentenceBuilder({
             )}
           </>
         )}
+      </div>
+
+      {/* Primary Accessible Action Buttons */}
+      <div className="grid grid-cols-4 gap-2 mt-2">
+        <button
+          onClick={onBackspace}
+          disabled={!currentWord}
+          className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-black/40 border border-white/5 hover:bg-white/10 hover:border-orange-500/50 text-slate-300 hover:text-orange-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Backspace (Remove last letter)"
+        >
+          <span className="material-symbols-outlined text-2xl">backspace</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider">
+            Back
+          </span>
+        </button>
+
+        <button
+          onClick={onSpace}
+          disabled={!currentWord}
+          className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-black/40 border border-white/5 hover:bg-white/10 hover:border-blue-500/50 text-slate-300 hover:text-blue-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Space (Complete word)"
+        >
+          <span className="material-symbols-outlined text-2xl">space_bar</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider">
+            Space
+          </span>
+        </button>
+
+        <button
+          onClick={onClearDraft}
+          disabled={!hasContent}
+          className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-black/40 border border-white/5 hover:bg-red-500/20 hover:border-red-500/50 text-slate-300 hover:text-red-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Clear Entire Draft"
+        >
+          <span className="material-symbols-outlined text-2xl">delete</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider">
+            Clear
+          </span>
+        </button>
+
+        <button
+          onClick={onSendMessage}
+          disabled={!hasContent}
+          className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-[#14b8a5] text-[#0f172a] shadow-[0_0_20px_rgba(20,184,165,0.3)] hover:shadow-[0_0_30px_rgba(20,184,165,0.5)] hover:bg-[#10b19f] transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none font-bold"
+          title="Send & Speak Message"
+        >
+          <span className="material-symbols-outlined text-2xl">send</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider w-full truncate">
+            Send
+          </span>
+        </button>
       </div>
     </div>
   );
