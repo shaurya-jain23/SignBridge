@@ -30,7 +30,7 @@ backend/model/keypoint_classifier/keypoint.csv
 # ========================
 # MediaPipe model binaries (downloadable — see README)
 # ========================
-*.task
+
 
 # ========================
 # Node / Frontend
