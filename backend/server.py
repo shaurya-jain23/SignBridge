@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+from collections import defaultdict
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -45,7 +46,8 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# CORS — allow the Vite dev server
+# CORS — allow the Vite dev server and any production origins from env
+_extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -53,6 +55,7 @@ app.add_middleware(
         "http://localhost:5174",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
+        *_extra_origins,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -162,6 +165,19 @@ async def check_room_api(room_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Per-Room Message History (in-memory — survives individual reconnects)
+# ---------------------------------------------------------------------------
+room_messages: dict[str, list] = defaultdict(list)
+MAX_MESSAGES_PER_ROOM = 200
+
+
+@app.get("/api/rooms/{room_id}/messages")
+async def get_room_messages(room_id: str):
+    """Return the message history for a room so reconnecting clients can sync."""
+    return {"messages": room_messages.get(room_id, [])}
+
+
+# ---------------------------------------------------------------------------
 # Room-Based WebSocket Connection Manager
 # ---------------------------------------------------------------------------
 class ConnectionManager:
@@ -261,7 +277,12 @@ async def websocket_endpoint(ws: WebSocket, room_id: str):
 
                     payload["translations"] = translations
                     payload["status"] = "sent"
-                    
+
+                    # Store in server-side history
+                    room_messages[room_id].append(payload)
+                    if len(room_messages[room_id]) > MAX_MESSAGES_PER_ROOM:
+                        room_messages[room_id] = room_messages[room_id][-MAX_MESSAGES_PER_ROOM:]
+
                     # Broadcast the full Message object to everyone in the room
                     await manager.broadcast({
                         "type": "chat_sync",
