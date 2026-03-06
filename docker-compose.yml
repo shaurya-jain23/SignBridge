@@ -1,0 +1,30 @@
+# ──────────────────────────────────────────────────────────────
+# SignBridge Pro — Docker Compose
+#
+# Usage:
+#   cd SignBridge
+#   docker compose up --build          # first run / after code changes
+#   docker compose up -d               # detached (background)
+#   docker compose down                # stop & remove containers
+# ──────────────────────────────────────────────────────────────
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: signbridge-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override / add extra env vars here if needed
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # TensorFlow model loading can take a while

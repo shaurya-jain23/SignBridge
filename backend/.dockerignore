@@ -1,0 +1,45 @@
+# ──────────────────────────────────────────────────────────────
+# SignBridge Pro — Backend .dockerignore
+# ──────────────────────────────────────────────────────────────
+
+# Virtual environment (built inside the image)
+venv/
+.venv/
+
+# Environment secrets (passed at runtime via --env-file)
+.env
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Training data & notebooks (not needed at runtime)
+MP_Data/
+training_lstm/
+scripts/
+*.ipynb
+.ipynb_checkpoints/
+
+# Logs
+*.log
+backend_logs.txt
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker (prevent recursive context)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Full dev requirements (Docker uses requirements-docker.txt)
+requirements.txt

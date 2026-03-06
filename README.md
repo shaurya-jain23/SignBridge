@@ -179,6 +179,38 @@ CORS_ORIGINS=https://your-frontend.vercel.app,https://your-custom-domain.com
 
 If no `VITE_*` env vars are set, the frontend automatically derives URLs from `window.location` — so it works out of the box when the frontend is served by the same backend.
 
+### Docker Deployment (Backend)
+
+Run the backend in a container — zero dependency conflicts on any OS (Linux, macOS, Windows + Docker Desktop).
+
+**Quick start with Docker Compose:**
+
+```bash
+cd SignBridge
+
+# Make sure backend/.env exists with your API key
+cp backend/.env.example backend/.env
+# Edit backend/.env → LINGODOTDEV_API_KEY=your_key_here
+
+docker compose up --build        # build & run (first time)
+docker compose up -d             # detached mode (subsequent runs)
+docker compose down              # stop
+```
+
+**Standalone Docker (no Compose):**
+
+```bash
+cd backend
+
+docker build -t signbridge-backend .
+
+docker run --env-file .env -p 8000:8000 signbridge-backend
+```
+
+The backend API will be available at `http://localhost:8000`. Point the frontend's `VITE_API_URL` and `VITE_WS_URL` at this address.
+
+> **Note:** The three `.task` model files (`hand_landmarker.task`, `pose_landmarker_full.task`, `face_landmarker.task`) must exist in `backend/` before building the image. Download them with the curl commands in **step 2** above.
+
 ### Regenerating Training Data (Optional)
 
 The large static training CSV (`keypoint.csv`, ~70 MB) is excluded from the repo. To regenerate it from the Kaggle ISL dataset:
