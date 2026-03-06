@@ -57,16 +57,16 @@ export default function WebcamFeed({
     }
 
     const captureCanvas = document.createElement("canvas");
-    captureCanvas.width = 640;
-    captureCanvas.height = 480;
+    captureCanvas.width = 320;
+    captureCanvas.height = 240;
     captureCanvasRef.current = captureCanvas;
 
     intervalRef.current = setInterval(() => {
       if (!videoRef.current || videoRef.current.readyState < 2) return;
 
       const ctx = captureCanvas.getContext("2d");
-      ctx.drawImage(videoRef.current, 0, 0, 640, 480);
-      const base64 = captureCanvas.toDataURL("image/jpeg", 0.6);
+      ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+      const base64 = captureCanvas.toDataURL("image/jpeg", 0.5);
       sendFrame(base64.split(",")[1]);
     }, FRAME_INTERVAL_MS);
 
