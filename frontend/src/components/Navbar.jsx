@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 export default function Navbar() {
   const { pathname } = useLocation();
   const isLanding = pathname === "/";
+  const isSession = pathname === "/session";
+  const isApp = pathname.startsWith("/app/");
 
   const scrollToSection = (e, id) => {
     e.preventDefault();
@@ -79,30 +81,29 @@ export default function Navbar() {
               >
                 Home
               </Link>
-              <Link
-                to="/session"
-                className="text-sm font-bold text-[#14b8a5] tracking-wide"
-              >
-                Join Session
-              </Link>
+              {!isSession && (
+                <Link
+                  to="/session"
+                  className="text-sm font-bold text-[#14b8a5] tracking-wide"
+                >
+                  Join Session
+                </Link>
+              )}
             </>
           )}
         </nav>
 
         {/* CTA Section */}
-        <div className="flex items-center gap-4">
-          {isLanding && (
-            <button className="hidden sm:block text-sm font-semibold text-slate-300 hover:text-[#14b8a5] px-4 py-2 transition-colors">
-              Login
-            </button>
-          )}
-          <Link
-            to="/session"
-            className="bg-[#14b8a5] text-[#0f172a] px-5 py-2.5 rounded-lg text-sm font-bold shadow-[0_0_30px_-5px_rgba(20,184,165,0.4)] hover:shadow-[0_0_40px_-5px_rgba(20,184,165,0.6)] hover:scale-105 transition-all"
-          >
-            {isLanding ? "Get Started" : "Join Session"}
-          </Link>
-        </div>
+        {!isSession && !isApp && (
+          <div className="flex items-center gap-4">
+            <Link
+              to="/session"
+              className="bg-[#14b8a5] text-[#0f172a] px-5 py-2.5 rounded-lg text-sm font-bold shadow-[0_0_30px_-5px_rgba(20,184,165,0.4)] hover:shadow-[0_0_40px_-5px_rgba(20,184,165,0.6)] hover:scale-105 transition-all"
+            >
+              Join Session
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   );

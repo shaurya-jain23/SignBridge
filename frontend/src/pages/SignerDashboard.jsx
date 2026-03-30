@@ -16,22 +16,28 @@ const glassPanel =
 export default function SignerDashboard({ roomId, sessionState }) {
   const navigate = useNavigate();
   const {
+    participantId,
     isConnected,
     prediction,
     messages,
+    memberCount,
     presence,
     error,
     sendFrame,
     sendChatMessage,
     sendPresence,
     clearConversation,
-  } = useWebSocket(roomId);
+  } = useWebSocket(roomId, {
+    role: "signer",
+    name: sessionState.displayName,
+  });
   const [targetLocale, setTargetLocale] = useState(
     sessionState.language || "en",
   );
 
   // Mode & Sentence Pipeline State
   const [mode, setMode] = useState("hybrid");
+  const [isCaptureEnabled, setIsCaptureEnabled] = useState(true);
   const [currentWord, setCurrentWord] = useState("");
   const [sentence, setSentence] = useState([]);
   const [lastStaticLabel, setLastStaticLabel] = useState(null);
@@ -39,8 +45,8 @@ export default function SignerDashboard({ roomId, sessionState }) {
   // Broadcast presence
   const isSigning = sentence.length > 0 || currentWord.length > 0;
   useEffect(() => {
-    sendPresence("signer", isSigning);
-  }, [isSigning, sendPresence]);
+    sendPresence("signer", isSigning, sessionState.displayName);
+  }, [isSigning, sendPresence, sessionState.displayName]);
 
   // Phrase Library History
   const [phraseHistory, setPhraseHistory] = useState([]);
@@ -55,7 +61,7 @@ export default function SignerDashboard({ roomId, sessionState }) {
 
   // Parse incoming predictions into the sentence array
   useEffect(() => {
-    if (!prediction) return;
+    if (!prediction || !isCaptureEnabled) return;
 
     if (
       prediction.type === "static" &&
@@ -72,15 +78,13 @@ export default function SignerDashboard({ roomId, sessionState }) {
     } else {
       setLastStaticLabel(null);
     }
-  }, [prediction]);
-
-  const fullSentence = [...sentence, currentWord].filter(Boolean).join(" ");
+  }, [prediction, isCaptureEnabled]);
 
   return (
     <div className="flex flex-col h-full max-h-full overflow-hidden">
       {/* ─── App Header Bar ─── */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-white/5 bg-[#0a0a1a]/60 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-col xl:flex-row xl:items-center xl:justify-between px-4 md:px-6 py-3 border-b border-white/5 bg-[#0a0a1a]/60 backdrop-blur-sm shrink-0 gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           {/* Connection Status */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5">
             <span className="relative flex h-2.5 w-2.5">
@@ -119,9 +123,32 @@ export default function SignerDashboard({ roomId, sessionState }) {
             ))}
           </div>
 
-          {/* Badge */}
-          <div className="hidden lg:block px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide">
-            Phase 5
+          {/* Detection Toggle */}
+          <button
+            onClick={() => setIsCaptureEnabled((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-xs font-bold uppercase tracking-wide ${
+              isCaptureEnabled
+                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25"
+                : "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25"
+            }`}
+            title={isCaptureEnabled ? "Pause camera and detection" : "Resume camera and detection"}
+          >
+            <span className="material-symbols-outlined text-[14px]">
+              {isCaptureEnabled ? "videocam" : "videocam_off"}
+            </span>
+            {isCaptureEnabled ? "Detection On" : "Detection Paused"}
+          </button>
+
+          <div className="px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide flex items-center gap-2">
+            <span className="material-symbols-outlined text-[14px]">
+              sign_language
+            </span>
+            Signer View
+          </div>
+
+          <div className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-semibold uppercase tracking-wide flex items-center gap-2">
+            <span className="material-symbols-outlined text-[14px]">group</span>
+            {memberCount} {memberCount === 1 ? "Member" : "Members"}
           </div>
 
           {/* Room Code */}
@@ -153,112 +180,119 @@ export default function SignerDashboard({ roomId, sessionState }) {
         </div>
 
         {/* Language Switcher */}
-        <LanguageSwitcher
-          locale={targetLocale}
-          onLocaleChange={setTargetLocale}
-        />
+        <div className="self-end xl:self-auto">
+          <LanguageSwitcher
+            locale={targetLocale}
+            onLocaleChange={setTargetLocale}
+          />
+        </div>
       </header>
 
       {/* ─── Main Content ─── */}
-      <main className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 gap-6 overflow-hidden">
-        {/* Left Column: Video Feed */}
-        <section
-          className={`flex flex-col flex-1 min-h-[300px] lg:h-full relative rounded-2xl overflow-hidden group ${glassPanel}`}
-        >
-          <WebcamFeed
-            sendFrame={(f) => sendFrame(f, mode)}
-            landmarks={prediction?.landmarks || []}
-            poseLandmarks={prediction?.pose_landmarks || []}
-            isConnected={isConnected}
-          />
-          {error && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-black/80 backdrop-blur-md border border-red-500/50 rounded-xl p-4 text-red-400 font-mono text-sm text-center">
-              System Error
-              <br />
-              {error}
-            </div>
-          )}
-        </section>
+      <main className="flex-1 grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] p-4 md:p-6 gap-4 md:gap-6 overflow-hidden">
+        {/* Left Column: Camera + ML Controls */}
+        <section className="min-h-0 flex flex-col gap-4">
+          <section
+            className={`relative rounded-2xl overflow-hidden min-h-[280px] h-[46vh] md:h-[50vh] xl:h-[52vh] max-h-[620px] group ${glassPanel}`}
+          >
+            <WebcamFeed
+              sendFrame={(f) => sendFrame(f, mode)}
+              landmarks={prediction?.landmarks || []}
+              poseLandmarks={prediction?.pose_landmarks || []}
+              isConnected={isConnected}
+              isActive={isCaptureEnabled}
+            />
+            {error && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-black/80 backdrop-blur-md border border-red-500/50 rounded-xl p-4 text-red-400 font-mono text-sm text-center">
+                System Error
+                <br />
+                {error}
+              </div>
+            )}
+          </section>
 
-        {/* Right Column: Intelligence Panel */}
-        <aside className="flex flex-col gap-4 lg:w-[420px] shrink-0 h-full overflow-y-auto pr-1">
-          {/* Card 1: Gesture Recognition */}
-          <GestureDisplay
-            label={prediction?.label}
-            word={prediction?.word}
-            confidence={prediction?.confidence}
-            type={prediction?.type}
-          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <GestureDisplay
+              label={isCaptureEnabled ? prediction?.label : null}
+              word={isCaptureEnabled ? prediction?.word : null}
+              confidence={isCaptureEnabled ? prediction?.confidence : 0}
+              type={isCaptureEnabled ? prediction?.type : null}
+            />
 
-          {/* Card 2: Sentence Builder */}
-          <SentenceBuilder
-            sentence={sentence}
-            currentWord={currentWord}
-            onSpace={() => {
-              if (currentWord) {
-                setSentence((prev) => [...prev, currentWord]);
+            <SentenceBuilder
+              sentence={sentence}
+              currentWord={currentWord}
+              onSpace={() => {
+                if (currentWord) {
+                  setSentence((prev) => [...prev, currentWord]);
+                  setCurrentWord("");
+                  setLastStaticLabel(null);
+                }
+              }}
+              onBackspace={() => {
                 setCurrentWord("");
                 setLastStaticLabel(null);
-              }
-            }}
-            onBackspace={() => {
-              setCurrentWord("");
-              setLastStaticLabel(null);
-            }}
-            onClearDraft={() => {
-              setSentence([]);
-              setCurrentWord("");
-              setLastStaticLabel(null);
-              fetch(`${API_BASE}/api/clear-sentence`, { method: "POST" }).catch(() => {});
-            }}
-            onSendMessage={() => {
-              if (sentence.length > 0 || currentWord) {
-                const finalSentence = [...sentence, currentWord]
-                  .filter(Boolean)
-                  .join(" ");
-                if (finalSentence) {
-                  if (!isConnected) {
-                    toast.error("Not connected. Cannot send message.");
-                    return;
+              }}
+              onClearDraft={() => {
+                setSentence([]);
+                setCurrentWord("");
+                setLastStaticLabel(null);
+                fetch(`${API_BASE}/api/clear-sentence`, { method: "POST" }).catch(() => {});
+              }}
+              onSendMessage={() => {
+                if (sentence.length > 0 || currentWord) {
+                  const finalSentence = [...sentence, currentWord]
+                    .filter(Boolean)
+                    .join(" ");
+                  if (finalSentence) {
+                    if (!isConnected) {
+                      toast.error("Not connected. Cannot send message.");
+                      return;
+                    }
+                    sendChatMessage({
+                      id: Math.random().toString(36).substring(2, 9),
+                      roomId: roomId,
+                      senderId: participantId,
+                      senderRole: "signer",
+                      senderName: sessionState.displayName,
+                      inputType: "gesture",
+                      originalText: finalSentence,
+                      originalLocale: "en",
+                      timestamp: new Date().toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }),
+                    });
                   }
-                  // Push to unified timeline via WebSocket
-                  sendChatMessage({
-                    id: Math.random().toString(36).substring(2, 9),
-                    roomId: roomId,
-                    senderRole: "signer",
-                    senderName: sessionState.displayName,
-                    inputType: "gesture",
-                    originalText: finalSentence,
-                    originalLocale: "en", // Gestures are mapped to English first
-                    timestamp: new Date().toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }),
-                  });
                 }
-              }
-              setSentence([]);
-              setCurrentWord("");
-              setLastStaticLabel(null);
-              fetch(`${API_BASE}/api/clear-sentence`, { method: "POST" }).catch(() => {});
-            }}
-          />
+                setSentence([]);
+                setCurrentWord("");
+                setLastStaticLabel(null);
+                fetch(`${API_BASE}/api/clear-sentence`, { method: "POST" }).catch(() => {});
+              }}
+            />
+          </div>
+        </section>
 
-          {/* Unified Timeline Container */}
-          <div className="flex-1 overflow-hidden flex flex-col relative h-full">
+        {/* Right Column: Larger Conversation Panel */}
+        <aside className="min-h-[360px] xl:min-h-0 h-full flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
             <UnifiedTimeline
               messages={messages}
               currentUserRole="signer"
+              currentUserId={participantId}
+              currentUserName={sessionState.displayName}
               currentLocale={targetLocale}
               onClearConversation={clearConversation}
             />
-            {/* Presence Indicator */}
             {presence?.listener && (
               <div className="absolute bottom-2 right-4 text-xs font-bold text-[#14b8a5] bg-[#14b8a5]/10 px-3 py-1.5 rounded-full animate-pulse border border-[#14b8a5]/30 flex items-center gap-2 backdrop-blur-md">
                 <span className="material-symbols-outlined text-[14px]">
                   keyboard
                 </span>
-                Listener is typing...
+                {presence.listenersActive > 1
+                  ? `${presence.listenersActive} listeners are typing...`
+                  : "Listener is typing..."}
               </div>
             )}
           </div>

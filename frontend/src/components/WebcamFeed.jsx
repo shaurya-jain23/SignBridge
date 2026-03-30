@@ -12,46 +12,100 @@ export default function WebcamFeed({
   landmarks,
   poseLandmarks,
   isConnected,
+  isActive = true,
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const captureCanvasRef = useRef(null);
   const intervalRef = useRef(null);
+  const streamRef = useRef(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
 
+  const stopCamera = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraReady(false);
+  }, []);
+
   // Start camera
   useEffect(() => {
-    let stream = null;
+    let cancelled = false;
 
     async function startCamera() {
+      if (!isActive) {
+        setCameraError(null);
+        stopCamera();
+        return;
+      }
+
+      if (!window.isSecureContext) {
+        setCameraError(
+          "Camera is blocked because this page is not secure (HTTPS). Use localhost, enable HTTPS for the dev server, or use this device as Listener (no camera needed).",
+        );
+        stopCamera();
+        return;
+      }
+
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        setCameraError(null);
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setCameraError("Camera API not available in this browser.");
+          stopCamera();
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 640, height: 480, facingMode: "user" },
           audio: false,
         });
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setCameraReady(true);
         }
       } catch (err) {
         console.error("Camera access error:", err);
-        setCameraError("Unable to access camera. Please grant permission.");
+        const message =
+          err?.name === "NotAllowedError"
+            ? "Camera permission denied. Please allow camera access in your browser settings."
+            : err?.name === "NotFoundError"
+              ? "No camera device found."
+              : "Unable to access camera.";
+        setCameraError(message);
+        stopCamera();
       }
     }
 
     startCamera();
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
+      cancelled = true;
+      stopCamera();
     };
-  }, []);
+  }, [isActive, stopCamera]);
 
   // Capture frames and send to backend
   useEffect(() => {
-    if (!cameraReady || !isConnected) {
+    if (!isActive || !cameraReady || !isConnected) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
@@ -73,7 +127,7 @@ export default function WebcamFeed({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [cameraReady, isConnected, sendFrame]);
+  }, [isActive, cameraReady, isConnected, sendFrame]);
 
   // Draw landmarks on overlay canvas
   useEffect(() => {
@@ -162,17 +216,21 @@ export default function WebcamFeed({
     );
   }
 
-  const handDetected = landmarks && landmarks.length > 0;
+  const handDetected = isActive && landmarks && landmarks.length > 0;
 
   return (
     <div className="relative w-full h-full bg-black flex flex-col overflow-hidden">
       {/* Camera Header Overlay */}
       <div className="absolute top-4 left-4 z-20 flex gap-2">
         <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-md border border-white/10 flex items-center gap-2">
-          <span className="material-symbols-outlined text-red-500 text-[16px] animate-pulse">
-            fiber_manual_record
+          <span
+            className={`material-symbols-outlined text-[16px] ${isActive ? "text-red-500 animate-pulse" : "text-amber-400"}`}
+          >
+            {isActive ? "fiber_manual_record" : "pause_circle"}
           </span>
-          <span className="text-xs font-mono text-white/90">LIVE FEED</span>
+          <span className="text-xs font-mono text-white/90">
+            {isActive ? "LIVE FEED" : "PAUSED"}
+          </span>
         </div>
       </div>
 
@@ -202,7 +260,7 @@ export default function WebcamFeed({
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(20,184,165,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,165,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
 
         {/* Loading overlay */}
-        {!cameraReady && (
+        {isActive && !cameraReady && (
           <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/60 backdrop-blur-sm">
             <div className="flex flex-col items-center">
               <span className="material-symbols-outlined text-4xl mb-3 text-slate-400 animate-spin">
@@ -210,6 +268,22 @@ export default function WebcamFeed({
               </span>
               <p className="text-slate-400 text-sm font-mono tracking-widest uppercase">
                 Initializing
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!isActive && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/70 backdrop-blur-sm">
+            <div className="flex flex-col items-center text-center">
+              <span className="material-symbols-outlined text-5xl mb-3 text-amber-300">
+                pause_circle
+              </span>
+              <p className="text-amber-200 text-sm font-semibold tracking-wide uppercase">
+                Detection Paused
+              </p>
+              <p className="text-slate-400 text-xs mt-1">
+                Resume camera to continue gesture recognition.
               </p>
             </div>
           </div>
