@@ -3,22 +3,64 @@ import toast from "react-hot-toast";
 import { saveMessages, loadMessages } from "./useSessionStorage";
 import { WS_BASE, API_BASE } from "../config";
 
+const CLIENT_ID_STORAGE_KEY = "signbridge_client_id";
+
+function getOrCreateClientId() {
+  const existing = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+  if (existing) return existing;
+
+  const generated =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sb_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  localStorage.setItem(CLIENT_ID_STORAGE_KEY, generated);
+  return generated;
+}
+
+function buildPresenceSummary(presenceMembers, selfId) {
+  const others = Object.values(presenceMembers).filter(
+    (m) => m && m.participantId && m.participantId !== selfId,
+  );
+
+  const signersActive = others.filter((m) => m.role === "signer" && m.isActive)
+    .length;
+  const listenersActive = others.filter(
+    (m) => m.role === "listener" && m.isActive,
+  ).length;
+
+  return {
+    signer: signersActive > 0,
+    listener: listenersActive > 0,
+    signersActive,
+    listenersActive,
+  };
+}
+
 /**
  * Custom hook for WebSocket connection to the SignBridge backend.
  * Handles room-based connections, sending frames, and real-time chat sync.
  * Persists messages to localStorage so they survive page refreshes.
  */
-export function useWebSocket(roomId) {
+export function useWebSocket(roomId, participant = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [prediction, setPrediction] = useState(null);
   const [messages, setMessages] = useState(() => loadMessages(roomId));
-  const [presence, setPresence] = useState({ signer: false, listener: false });
+  const [memberCount, setMemberCount] = useState(1);
+  const [presence, setPresence] = useState({
+    signer: false,
+    listener: false,
+    signersActive: 0,
+    listenersActive: 0,
+  });
+  const [presenceMembers, setPresenceMembers] = useState({});
   const [error, setError] = useState(null);
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectAttempts = useRef(0);
   const MAX_RECONNECT_ATTEMPTS = 10;
   const wasConnectedRef = useRef(false);
+  const clientIdRef = useRef(getOrCreateClientId());
 
   // Persist messages to localStorage whenever they change
   useEffect(() => {
@@ -43,6 +85,13 @@ export function useWebSocket(roomId) {
       ws.onopen = () => {
         setIsConnected(true);
         setError(null);
+        setPresenceMembers({});
+        setPresence({
+          signer: false,
+          listener: false,
+          signersActive: 0,
+          listenersActive: 0,
+        });
         console.log(`[WS] Connected to SignBridge Room: ${roomId}`);
 
         // Show reconnection toast if this was a reconnect
@@ -51,6 +100,17 @@ export function useWebSocket(roomId) {
         }
         reconnectAttempts.current = 0;
         wasConnectedRef.current = true;
+
+        ws.send(
+          JSON.stringify({
+            type: "join",
+            payload: {
+              participantId: clientIdRef.current,
+              participantName: participant.name || "Guest",
+              role: participant.role || "listener",
+            },
+          }),
+        );
 
         // Sync message history from server (catches messages sent while disconnected)
         fetch(`${API_BASE}/api/rooms/${roomId}/messages`)
@@ -95,10 +155,42 @@ export function useWebSocket(roomId) {
               return [...prev, data.data];
             });
           } else if (data.type === "presence_sync") {
-            setPresence((prev) => ({
-              ...prev,
-              [data.data.role]: data.data.isActive,
-            }));
+            const payload = data.data || {};
+            if (!payload.participantId || !payload.role) return;
+
+            setPresenceMembers((prev) => {
+              return {
+                ...prev,
+                [payload.participantId]: {
+                  participantId: payload.participantId,
+                  participantName: payload.participantName || "Guest",
+                  role: payload.role,
+                  isActive: Boolean(payload.isActive),
+                  updatedAt: Date.now(),
+                },
+              };
+            });
+          } else if (data.type === "room_state") {
+            setMemberCount(Math.max(1, Number(data?.data?.memberCount || 1)));
+          } else if (data.type === "room_event") {
+            const action = data?.data?.action;
+            const eventParticipant = data?.data?.participant || {};
+            const count = Math.max(1, Number(data?.data?.memberCount || 1));
+
+            setMemberCount(count);
+
+            if (eventParticipant.participantId === clientIdRef.current) return;
+
+            const name = eventParticipant.participantName || "Someone";
+            if (action === "joined") {
+              toast.success(`${name} joined the room`, {
+                id: `room-join-${eventParticipant.participantId}-${Date.now()}`,
+              });
+            } else if (action === "left") {
+              toast(`${name} left the room`, {
+                id: `room-left-${eventParticipant.participantId}-${Date.now()}`,
+              });
+            }
           } else if (data.error) {
             setError(data.error);
             toast.error(`Server error: ${data.error}`, { id: "ws-error" });
@@ -155,7 +247,11 @@ export function useWebSocket(roomId) {
         reconnectTimerRef.current = setTimeout(connect, 2000);
       }
     }
-  }, [roomId]);
+  }, [roomId, participant.name, participant.role]);
+
+  useEffect(() => {
+    setPresence(buildPresenceSummary(presenceMembers, clientIdRef.current));
+  }, [presenceMembers]);
 
   // Send a video frame to the backend with the current mode
   const sendFrame = useCallback((base64Frame, mode = "hybrid") => {
@@ -169,19 +265,32 @@ export function useWebSocket(roomId) {
   // Send a completed chat message payload
   const sendChatMessage = useCallback((payload) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const finalPayload = {
+        ...payload,
+        senderId: payload.senderId || clientIdRef.current,
+      };
+
       // Optimistic UI Update
-      setMessages((prev) => [...prev, { ...payload, status: "sending" }]);
-      wsRef.current.send(JSON.stringify({ type: "chat", payload }));
+      setMessages((prev) => [...prev, { ...finalPayload, status: "sending" }]);
+      wsRef.current.send(JSON.stringify({ type: "chat", payload: finalPayload }));
     } else {
       toast.error("Not connected. Message not sent.", { id: "ws-send-fail" });
     }
   }, []);
 
   // Send a typing/signing presence update
-  const sendPresence = useCallback((role, isActive) => {
+  const sendPresence = useCallback((role, isActive, participantName = "Guest") => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
-        JSON.stringify({ type: "presence", payload: { role, isActive } }),
+        JSON.stringify({
+          type: "presence",
+          payload: {
+            role,
+            isActive,
+            participantName,
+            participantId: clientIdRef.current,
+          },
+        }),
       );
     }
   }, []);
@@ -209,10 +318,13 @@ export function useWebSocket(roomId) {
   }, [connect]);
 
   return {
+    participantId: clientIdRef.current,
     isConnected,
     prediction,
     messages,
+    memberCount,
     presence,
+    presenceMembers,
     error,
     sendFrame,
     sendChatMessage,

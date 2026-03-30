@@ -1,17 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { saveSession } from "../hooks/useSessionStorage";
 import { API_BASE } from "../config";
+import { useLocales } from "../hooks/useLocales";
 
 export default function SessionLobby() {
   const navigate = useNavigate();
+  const locales = useLocales();
   const [mode, setMode] = useState("create"); // 'create' | 'join'
   const [roomId, setRoomId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("signer");
   const [language, setLanguage] = useState("en");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!locales.length) return;
+    if (!locales.some((loc) => loc.code === language)) {
+      setLanguage(locales[0].code);
+    }
+  }, [language, locales]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -209,17 +218,11 @@ export default function SessionLobby() {
                 onChange={(e) => setLanguage(e.target.value)}
                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#14b8a5]/50 transition-colors appearance-none"
               >
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="bn">Bengali</option>
-                <option value="ur">Urdu</option>
-                <option value="te">Telugu</option>
-                <option value="mr">Marathi</option>
-                <option value="ta">Tamil</option>
-                <option value="gu">Gujarati</option>
-                <option value="kn">Kannada</option>
-                <option value="ml">Malayalam</option>
-                <option value="pa">Punjabi</option>
+                {locales.map((loc) => (
+                  <option key={loc.code} value={loc.code}>
+                    {loc.label}
+                  </option>
+                ))}
               </select>
               <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                 expand_more

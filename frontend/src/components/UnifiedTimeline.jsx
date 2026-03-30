@@ -8,6 +8,8 @@ import React, { useRef, useEffect, useState } from "react";
 export default function UnifiedTimeline({
   messages = [],
   currentUserRole = "signer",
+  currentUserId = "",
+  currentUserName = "",
   currentLocale = "en",
   onClearConversation,
 }) {
@@ -39,10 +41,10 @@ export default function UnifiedTimeline({
   return (
     <div className="flex-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 md:p-6 flex flex-col min-h-[300px] shadow-2xl overflow-hidden relative">
       <div className="flex items-center gap-3 mb-4 shrink-0 pb-4 border-b border-white/5">
-        <span className="material-symbols-outlined text-[#14b8a5] text-xl">
+        <span className="material-symbols-outlined text-[#14b8a5] text-sm sm:text-xl">
           forum
         </span>
-        <h3 className="text-base font-bold text-white tracking-wide">
+        <h3 className="text-sm sm:text-base font-bold text-white tracking-wide">
           Conversation
         </h3>
         <div
@@ -82,7 +84,10 @@ export default function UnifiedTimeline({
           </div>
         ) : (
           messages.map((msg, idx) => {
-            const isMe = msg.senderRole === currentUserRole;
+            const isMe = currentUserId
+              ? msg.senderId === currentUserId
+              : msg.senderRole === currentUserRole &&
+                msg.senderName === currentUserName;
             const displayText =
               msg.translations?.[currentLocale] || msg.originalText;
 
@@ -159,27 +164,27 @@ function TimelineMessage({ msg, isMe, isConsecutive, displayText, onSpeak }) {
           </p>
 
           {/* Controls side */}
-          <div className="flex flex-col gap-1 items-end shrink-0">
+          <div className="flex flex-row-reverse gap-2 items-start shrink-0">
             <button
               onClick={onSpeak}
-              className="p-1 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#14b8a5]/50"
+              className="rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#14b8a5]/50"
               aria-label="Read message aloud"
               title="Read aloud"
             >
-              <span className="material-symbols-outlined text-[16px]">
+              <span className="material-symbols-outlined text-[10px]">
                 volume_up
               </span>
             </button>
             <button
               onClick={() => setExpanded(!expanded)}
-              className={`p-1 rounded-full transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#14b8a5]/50 ${expanded ? "text-[#14b8a5] bg-white/10" : "text-slate-500 hover:bg-white/10 hover:text-white"}`}
+              className={`rounded-full transition-colors flex justify-center focus:outline-none focus:ring-2 focus:ring-[#14b8a5]/50 ${expanded ? "text-[#14b8a5] bg-white/10" : "text-slate-500 hover:bg-white/10 hover:text-white"}`}
               aria-label={
                 expanded ? "Hide message details" : "Show message details"
               }
               aria-expanded={expanded}
               title="Show details"
             >
-              <span className="material-symbols-outlined text-[16px]">
+              <span className="material-symbols-outlined text-[10px]">
                 info
               </span>
             </button>

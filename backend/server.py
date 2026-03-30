@@ -46,8 +46,39 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# CORS — allow the Vite dev server and any production origins from env
-_extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+SUPPORTED_LOCALES = [
+    {"code": "en", "label": "English", "flag": "EN"},
+    {"code": "hi", "label": "Hindi", "flag": "HI"},
+    {"code": "es", "label": "Spanish", "flag": "ES"},
+    {"code": "fr", "label": "French", "flag": "FR"},
+    {"code": "de", "label": "German", "flag": "DE"},
+    {"code": "ja", "label": "Japanese", "flag": "JA"},
+    {"code": "ar", "label": "Arabic", "flag": "AR"},
+    {"code": "zh", "label": "Chinese", "flag": "ZH"},
+    {"code": "ko", "label": "Korean", "flag": "KO"},
+    {"code": "pt", "label": "Portuguese", "flag": "PT"},
+]
+
+# CORS — allow the Vite dev server and any production origins from env.
+# Note: Browser Origin headers never include a trailing slash, so we normalize.
+def _normalize_origin(origin: str) -> str:
+    origin = (origin or "").strip()
+    if origin.endswith("/"):
+        origin = origin[:-1]
+    return origin
+
+
+_extra_origins = []
+for raw in os.getenv("CORS_ORIGINS", "").split(","):
+    normalized = _normalize_origin(raw)
+    if normalized:
+        _extra_origins.append(normalized)
+
+# Optional: allow a regex for dev/LAN scenarios.
+# Example:
+#   CORS_ORIGIN_REGEX=^http://192\\.168\\.\\d+\\.\\d+(?::\\d+)?$
+cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX") or None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -57,6 +88,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         *_extra_origins,
     ],
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,6 +124,12 @@ async def health_check():
         "model_loaded": gesture_service is not None,
         "description": "Phase 2 — Gesture Recognition + Lingo.dev Translation",
     }
+
+
+@app.get("/api/locales")
+async def get_supported_locales():
+    """Return supported locales used by room language controls."""
+    return {"locales": SUPPORTED_LOCALES}
 
 
 @app.post("/api/clear-sentence")
@@ -184,6 +222,8 @@ class ConnectionManager:
     def __init__(self):
         # room_id -> list of WebSockets
         self.active_connections: dict[str, list[WebSocket]] = {}
+        # room_id -> websocket -> participant metadata
+        self.room_participants: dict[str, dict[WebSocket, dict]] = {}
         self.created_rooms = set()  # Store valid room IDs
 
     def create_room(self, room_id: str):
@@ -200,19 +240,44 @@ class ConnectionManager:
         await ws.accept()
         if room_id not in self.active_connections:
             self.active_connections[room_id] = []
+        if room_id not in self.room_participants:
+            self.room_participants[room_id] = {}
         self.active_connections[room_id].append(ws)
         logger.info(f"Client joined room: {room_id}. Total clients: {len(self.active_connections[room_id])}")
 
+    def member_count(self, room_id: str) -> int:
+        return len(self.active_connections.get(room_id, []))
+
+    def register_participant(self, ws: WebSocket, room_id: str, participant: dict):
+        if room_id not in self.room_participants:
+            self.room_participants[room_id] = {}
+
+        self.room_participants[room_id][ws] = {
+            "participantId": participant.get("participantId"),
+            "participantName": participant.get("participantName") or "Guest",
+            "role": participant.get("role") or "listener",
+        }
+
+    def get_participant(self, ws: WebSocket, room_id: str) -> Optional[dict]:
+        return self.room_participants.get(room_id, {}).get(ws)
+
     def disconnect(self, ws: WebSocket, room_id: str):
+        participant = self.room_participants.get(room_id, {}).pop(ws, None)
         if room_id in self.active_connections and ws in self.active_connections[room_id]:
             self.active_connections[room_id].remove(ws)
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
+                if room_id in self.room_participants:
+                    del self.room_participants[room_id]
             logger.info(f"Client left room: {room_id}")
 
-    async def broadcast(self, message: dict, room_id: str):
+        return participant
+
+    async def broadcast(self, message: dict, room_id: str, exclude_ws: Optional[WebSocket] = None):
         if room_id in self.active_connections:
             for connection in self.active_connections[room_id]:
+                if exclude_ws is not None and connection is exclude_ws:
+                    continue
                 try:
                     await connection.send_json(message)
                 except Exception as e:
@@ -226,6 +291,10 @@ manager = ConnectionManager()
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(ws: WebSocket, room_id: str):
     await manager.connect(ws, room_id)
+    await ws.send_json({
+        "type": "room_state",
+        "data": {"memberCount": manager.member_count(room_id)},
+    })
 
     try:
         while True:
@@ -235,7 +304,24 @@ async def websocket_endpoint(ws: WebSocket, room_id: str):
                 message = json.loads(data)
                 msg_type = message.get("type", "frame")
 
-                if msg_type == "chat":
+                if msg_type == "join":
+                    payload = message.get("payload", {})
+                    manager.register_participant(ws, room_id, payload)
+                    participant = manager.get_participant(ws, room_id) or {}
+                    await manager.broadcast(
+                        {
+                            "type": "room_event",
+                            "data": {
+                                "action": "joined",
+                                "participant": participant,
+                                "memberCount": manager.member_count(room_id),
+                            },
+                        },
+                        room_id,
+                        exclude_ws=ws,
+                    )
+
+                elif msg_type == "chat":
                     # A completed message sent from Signer or Listener
                     # We should translate it right here before broadcasting
                     payload = message.get("payload", {})
@@ -246,7 +332,7 @@ async def websocket_endpoint(ws: WebSocket, room_id: str):
                     # We will dynamically translate into standard locales for simplicity 
                     # (in production this would be targeted based on room preferences)
                     api_key = os.getenv("LINGODOTDEV_API_KEY")
-                    target_locales = ["en", "hi", "es", "fr"]
+                    target_locales = [loc["code"] for loc in SUPPORTED_LOCALES]
                     translations = {}
                     
                     if api_key and original_text:
@@ -333,10 +419,36 @@ async def websocket_endpoint(ws: WebSocket, room_id: str):
                     break
 
     except WebSocketDisconnect:
-        manager.disconnect(ws, room_id)
+        participant = manager.disconnect(ws, room_id)
+        if participant:
+            await manager.broadcast(
+                {
+                    "type": "room_event",
+                    "data": {
+                        "action": "left",
+                        "participant": participant,
+                        "memberCount": manager.member_count(room_id),
+                    },
+                },
+                room_id,
+                exclude_ws=ws,
+            )
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        manager.disconnect(ws, room_id)
+        participant = manager.disconnect(ws, room_id)
+        if participant:
+            await manager.broadcast(
+                {
+                    "type": "room_event",
+                    "data": {
+                        "action": "left",
+                        "participant": participant,
+                        "memberCount": manager.member_count(room_id),
+                    },
+                },
+                room_id,
+                exclude_ws=ws,
+            )
 
 
 # ---------------------------------------------------------------------------

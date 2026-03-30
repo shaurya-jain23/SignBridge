@@ -1,17 +1,5 @@
 import { useState } from "react";
-
-const LOCALES = [
-  { code: "en", label: "English", flag: "🇬🇧" },
-  { code: "hi", label: "हिन्दी", flag: "🇮🇳" },
-  { code: "es", label: "Español", flag: "🇪🇸" },
-  { code: "fr", label: "Français", flag: "🇫🇷" },
-  { code: "de", label: "Deutsch", flag: "🇩🇪" },
-  { code: "ja", label: "日本語", flag: "🇯🇵" },
-  { code: "ar", label: "العربية", flag: "🇸🇦" },
-  { code: "zh", label: "中文", flag: "🇨🇳" },
-  { code: "ko", label: "한국어", flag: "🇰🇷" },
-  { code: "pt", label: "Português", flag: "🇧🇷" },
-];
+import { useLocales } from "../hooks/useLocales";
 
 /**
  * LanguageSwitcher — lets the user pick the target translation language.
@@ -19,8 +7,10 @@ const LOCALES = [
  */
 export default function LanguageSwitcher({ locale, onLocaleChange }) {
   const [isOpen, setIsOpen] = useState(false);
+  const locales = useLocales();
 
-  const currentLocale = LOCALES.find((l) => l.code === locale) || LOCALES[0];
+  const currentLocale =
+    locales.find((l) => l.code === locale) || locales[0] || { flag: "EN", label: "English" };
 
   return (
     <div className="relative">
@@ -52,7 +42,7 @@ export default function LanguageSwitcher({ locale, onLocaleChange }) {
 
           <div className="absolute right-0 mt-2 w-48 z-[100] animate-[fade-in_0.15s_ease-out]">
             <div className="rounded-xl overflow-hidden border border-white/10 bg-[#0d1b2a]/95 backdrop-blur-xl shadow-2xl shadow-black/50">
-              {LOCALES.map((loc) => (
+              {locales.map((loc) => (
                 <button
                   key={loc.code}
                   onClick={() => {

@@ -12,14 +12,19 @@ const glassPanel =
 export default function ListenerDashboard({ roomId, sessionState }) {
   const navigate = useNavigate();
   const {
+    participantId,
     isConnected,
     messages,
+    memberCount,
     presence,
     error,
     sendChatMessage,
     sendPresence,
     clearConversation,
-  } = useWebSocket(roomId);
+  } = useWebSocket(roomId, {
+    role: "listener",
+    name: sessionState.displayName,
+  });
   const [targetLocale, setTargetLocale] = useState(
     sessionState.language || "en",
   );
@@ -32,7 +37,7 @@ export default function ListenerDashboard({ roomId, sessionState }) {
       const newMsgs = messages.slice(lastMessageCount.current);
       newMsgs.forEach((msg) => {
         // Only read messages from the other person
-        if (msg.senderRole !== "listener") {
+        if (msg.senderId !== participantId) {
           const text = msg.translations?.[targetLocale] || msg.originalText;
           if (text) {
             const utterance = new SpeechSynthesisUtterance(text);
@@ -49,7 +54,7 @@ export default function ListenerDashboard({ roomId, sessionState }) {
       });
     }
     lastMessageCount.current = messages.length;
-  }, [messages, autoTTS, targetLocale]);
+  }, [messages, autoTTS, targetLocale, participantId]);
 
   const handleSend = (text, inputType = "typed") => {
     if (!text.trim()) return;
@@ -62,11 +67,13 @@ export default function ListenerDashboard({ roomId, sessionState }) {
     sendChatMessage({
       id: Math.random().toString(36).substring(2, 9),
       roomId: roomId,
+      senderId: participantId,
       senderRole: "listener",
       senderName: sessionState.displayName,
       inputType: inputType,
       originalText: text,
-      originalLocale: targetLocale,
+      // Listener input is treated as English source for translation fanout.
+      originalLocale: "en",
       timestamp: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
@@ -77,8 +84,8 @@ export default function ListenerDashboard({ roomId, sessionState }) {
   return (
     <div className="flex flex-col h-full max-h-full overflow-hidden bg-[#0f172a]">
       {/* ─── App Header Bar ─── */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-white/5 bg-[#0a0a1a]/60 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-3 sm:px-6 py-3 border-b border-white/5 bg-[#0a0a1a]/60 backdrop-blur-sm shrink-0 gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
           {/* Connection Status */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5">
             <span className="relative flex h-2.5 w-2.5">
@@ -100,16 +107,21 @@ export default function ListenerDashboard({ roomId, sessionState }) {
             </span>
           </div>
 
-          <div className="px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide flex items-center gap-2">
+          <div className="px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold uppercase tracking-wide flex items-center gap-2 shrink-0">
             <span className="material-symbols-outlined text-[14px]">
               hearing
             </span>
             Listener View
           </div>
 
+          <div className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-semibold uppercase tracking-wide flex items-center gap-2 shrink-0">
+            <span className="material-symbols-outlined text-[14px]">group</span>
+            {memberCount} {memberCount === 1 ? "Member" : "Members"}
+          </div>
+
           <button
             onClick={() => setAutoTTS(!autoTTS)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-xs font-bold uppercase tracking-wide ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-xs font-bold uppercase tracking-wide shrink-0 ${
               autoTTS
                 ? "bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30"
                 : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
@@ -119,7 +131,8 @@ export default function ListenerDashboard({ roomId, sessionState }) {
             <span className="material-symbols-outlined text-[14px]">
               {autoTTS ? "volume_up" : "volume_off"}
             </span>
-            Auto-Read
+            <span className="hidden sm:inline">Auto-Read</span>
+            <span className="sm:hidden">TTS</span>
           </button>
 
           {/* Room Code */}
@@ -128,11 +141,12 @@ export default function ListenerDashboard({ roomId, sessionState }) {
               navigator.clipboard.writeText(roomId);
               toast.success(`Room code copied: ${roomId}`);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition-all text-xs font-mono cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition-all text-xs font-mono cursor-pointer shrink-0"
             title="Click to copy room code"
           >
             <span className="material-symbols-outlined text-[14px]">content_copy</span>
-            {roomId}
+            <span className="hidden sm:inline">{roomId}</span>
+            <span className="sm:hidden">Room</span>
           </button>
 
           {/* Leave Session */}
@@ -142,18 +156,20 @@ export default function ListenerDashboard({ roomId, sessionState }) {
               toast.success("Left the session");
               navigate("/session");
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all text-xs font-bold"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all text-xs font-bold shrink-0"
             title="Leave session"
           >
             <span className="material-symbols-outlined text-[14px]">logout</span>
-            Leave
+            <span className="hidden sm:inline">Leave</span>
           </button>
         </div>
 
-        <LanguageSwitcher
-          locale={targetLocale}
-          onLocaleChange={setTargetLocale}
-        />
+        <div className="self-end sm:self-auto">
+          <LanguageSwitcher
+            locale={targetLocale}
+            onLocaleChange={setTargetLocale}
+          />
+        </div>
       </header>
 
       {/* ─── Main Content ─── */}
@@ -172,6 +188,8 @@ export default function ListenerDashboard({ roomId, sessionState }) {
           <UnifiedTimeline
             messages={messages}
             currentUserRole="listener"
+            currentUserId={participantId}
+            currentUserName={sessionState.displayName}
             currentLocale={targetLocale}
             onClearConversation={clearConversation}
           />
@@ -182,7 +200,9 @@ export default function ListenerDashboard({ roomId, sessionState }) {
               <span className="material-symbols-outlined text-[14px]">
                 sign_language
               </span>
-              Signer is drafting a message...
+              {presence.signersActive > 1
+                ? `${presence.signersActive} signers are drafting...`
+                : "Signer is drafting a message..."}
             </div>
           )}
         </div>
@@ -191,7 +211,9 @@ export default function ListenerDashboard({ roomId, sessionState }) {
         <ReplyBar
           onSend={handleSend}
           currentLocale={targetLocale}
-          onPresenceChange={(isActive) => sendPresence("listener", isActive)}
+          onPresenceChange={(isActive) =>
+            sendPresence("listener", isActive, sessionState.displayName)
+          }
         />
       </main>
     </div>
@@ -300,10 +322,10 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
         </div>
       )}
 
-      <div className="flex items-end gap-3 rounded-xl">
+      <div className="flex items-end gap-2 sm:gap-3 rounded-xl">
         <button
           onClick={toggleMic}
-          className={`flex shrink-0 items-center justify-center w-12 h-12 rounded-full transition-all active:scale-95 shadow-lg ${
+          className={`flex shrink-0 items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all active:scale-95 shadow-lg ${
             isListening
               ? "bg-red-500 shadow-red-500/30 animate-pulse text-white"
               : "bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white"
@@ -324,17 +346,17 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
               ? "Listening..."
               : "Type a message or tap the mic to speak..."
           }
-          className={`flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-[#14b8a5]/50 transition-colors resize-none overflow-hidden min-h-[50px] max-h-[120px] ${isListening ? "italic text-emerald-300 border-red-500/30 bg-red-500/5" : ""}`}
+          className={`flex-1 bg-white/5 border border-white/10 rounded-xl py-1 px-2 sm:py-3 sm:px-4 text-white placeholder-slate-400 focus:outline-none focus:border-[#14b8a5]/50 transition-colors resize-none overflow-hidden min-h-[60px] sm:min-h-[0px] ${isListening ? "italic text-emerald-300 border-red-500/30 bg-red-500/5" : ""}`}
           rows={1}
         />
 
         <button
           onClick={handleSend}
           disabled={!text.trim()}
-          className="flex shrink-0 items-center justify-center h-12 px-6 rounded-xl bg-[#14b8a5] text-[#0f172a] font-bold shadow-[0_0_20px_rgba(20,184,165,0.2)] hover:shadow-[0_0_30px_rgba(20,184,165,0.4)] hover:scale-[1.02] transition-all disabled:opacity-30 disabled:scale-100 disabled:shadow-none"
+          className="flex shrink-0 items-center justify-center h-11 sm:h-12 px-4 sm:px-6 rounded-xl bg-[#14b8a5] text-[#0f172a] font-bold shadow-[0_0_20px_rgba(20,184,165,0.2)] hover:shadow-[0_0_30px_rgba(20,184,165,0.4)] hover:scale-[1.02] transition-all disabled:opacity-30 disabled:scale-100 disabled:shadow-none"
         >
-          <span className="material-symbols-outlined mr-2">send</span>
-          Send
+          <span className="material-symbols-outlined sm:mr-2">send</span>
+          <span className="hidden sm:inline">Send</span>
         </button>
       </div>
     </div>
