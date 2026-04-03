@@ -12,6 +12,12 @@ SignBridge Pro is a real-time, **bi-directional** sign language communication pl
 
 The application offers a fully localized experience powered by the **Lingo.dev SDK**, providing real-time multilingual text translations and native Text-to-Speech (TTS) / Speech-to-Text (STT) across 10+ languages.
 
+## Demo Video 🎬
+
+Watch the complete project demo here:
+
+- https://youtu.be/F1VsGi5L8Wo
+
 ## Features ✨
 
 ### Room-Based Communication

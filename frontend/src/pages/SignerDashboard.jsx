@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -12,6 +12,8 @@ import UnifiedTimeline from "../components/UnifiedTimeline";
 
 const glassPanel =
   "bg-[linear-gradient(180deg,rgba(30,41,59,0.4)_0%,rgba(15,23,42,0.4)_100%)] backdrop-blur-[12px] border border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-300 hover:border-[#14b8a5]/30 hover:shadow-[0_0_15px_rgba(20,184,165,0.1)]";
+
+const STATIC_HOLD_MS = 2000;
 
 export default function SignerDashboard({ roomId, sessionState }) {
   const navigate = useNavigate();
@@ -40,7 +42,8 @@ export default function SignerDashboard({ roomId, sessionState }) {
   const [isCaptureEnabled, setIsCaptureEnabled] = useState(true);
   const [currentWord, setCurrentWord] = useState("");
   const [sentence, setSentence] = useState([]);
-  const [lastStaticLabel, setLastStaticLabel] = useState(null);
+  const staticHoldRef = useRef({ label: null, startAt: 0 });
+  const committedStaticLabelRef = useRef(null);
 
   // Broadcast presence
   const isSigning = sentence.length > 0 || currentWord.length > 0;
@@ -68,17 +71,41 @@ export default function SignerDashboard({ roomId, sessionState }) {
       prediction.label &&
       prediction.label !== "Unknown"
     ) {
-      if (prediction.label !== lastStaticLabel) {
-        setCurrentWord((prev) => prev + prediction.label);
-        setLastStaticLabel(prediction.label);
+      const detectedLabel = prediction.label;
+      const now = Date.now();
+
+      // Prevent repeated commits while the same held sign stays in frame.
+      if (committedStaticLabelRef.current === detectedLabel) {
+        return;
+      }
+
+      if (staticHoldRef.current.label !== detectedLabel) {
+        staticHoldRef.current = { label: detectedLabel, startAt: now };
+        return;
+      }
+
+      if (now - staticHoldRef.current.startAt >= STATIC_HOLD_MS) {
+        setCurrentWord((prev) => prev + detectedLabel);
+        committedStaticLabelRef.current = detectedLabel;
+        staticHoldRef.current = { label: null, startAt: 0 };
       }
     } else if (prediction.type === "dynamic" && prediction.word) {
       setSentence((prev) => [...prev, prediction.word]);
-      setLastStaticLabel(null);
+      committedStaticLabelRef.current = null;
+      staticHoldRef.current = { label: null, startAt: 0 };
     } else {
-      setLastStaticLabel(null);
+      // Reset when no valid static gesture is detected to allow next hold commit.
+      committedStaticLabelRef.current = null;
+      staticHoldRef.current = { label: null, startAt: 0 };
     }
   }, [prediction, isCaptureEnabled]);
+
+  // If capture is paused, clear static hold state.
+  useEffect(() => {
+    if (isCaptureEnabled) return;
+    committedStaticLabelRef.current = null;
+    staticHoldRef.current = { label: null, startAt: 0 };
+  }, [isCaptureEnabled]);
 
   return (
     <div className="flex flex-col h-full max-h-full overflow-hidden">
@@ -226,17 +253,20 @@ export default function SignerDashboard({ roomId, sessionState }) {
                 if (currentWord) {
                   setSentence((prev) => [...prev, currentWord]);
                   setCurrentWord("");
-                  setLastStaticLabel(null);
+                  committedStaticLabelRef.current = null;
+                  staticHoldRef.current = { label: null, startAt: 0 };
                 }
               }}
               onBackspace={() => {
                 setCurrentWord("");
-                setLastStaticLabel(null);
+                committedStaticLabelRef.current = null;
+                staticHoldRef.current = { label: null, startAt: 0 };
               }}
               onClearDraft={() => {
                 setSentence([]);
                 setCurrentWord("");
-                setLastStaticLabel(null);
+                committedStaticLabelRef.current = null;
+                staticHoldRef.current = { label: null, startAt: 0 };
                 fetch(`${API_BASE}/api/clear-sentence`, { method: "POST" }).catch(() => {});
               }}
               onSendMessage={() => {
@@ -267,7 +297,8 @@ export default function SignerDashboard({ roomId, sessionState }) {
                 }
                 setSentence([]);
                 setCurrentWord("");
-                setLastStaticLabel(null);
+                committedStaticLabelRef.current = null;
+                staticHoldRef.current = { label: null, startAt: 0 };
                 fetch(`${API_BASE}/api/clear-sentence`, { method: "POST" }).catch(() => {});
               }}
             />

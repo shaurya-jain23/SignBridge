@@ -225,6 +225,8 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
   const [isListening, setIsListening] = useState(false);
   const [sttError, setSttError] = useState("");
   const recognitionRef = useRef(null);
+  const textareaRef = useRef(null);
+  const [sttAvailable, setSttAvailable] = useState(true);
 
   // Broadcast presence
   const isActive = text.length > 0 || isListening;
@@ -242,7 +244,24 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
   useEffect(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      setSttAvailable(false);
+
+      // Chromium exposes SpeechRecognition on localhost (treated as secure),
+      // but typically hides it on plain http:// IP origins.
+      if (!window.isSecureContext) {
+        setSttError(
+          "Speech-to-text needs a secure origin (HTTPS) or localhost. Open this app on https:// or run it on the same device at http://localhost.",
+        );
+      } else {
+        setSttError(
+          "Speech-to-text isn't supported in this browser. On iPhone, use keyboard dictation (mic on the keyboard) to fill the message box.",
+        );
+      }
+
+      recognitionRef.current = null;
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
@@ -266,7 +285,7 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
       setIsListening(false);
       setSttError(
         event.error === "network"
-          ? "Chrome requires HTTPS for STT."
+          ? "Speech-to-text requires HTTPS (secure origin)."
           : "Mic access denied.",
       );
     };
@@ -276,6 +295,7 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
     };
 
     recognitionRef.current = recognition;
+    setSttAvailable(true);
 
     return () => {
       if (recognitionRef.current) recognitionRef.current.stop();
@@ -283,8 +303,14 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
   }, [currentLocale]);
 
   const toggleMic = () => {
-    if (!recognitionRef.current)
-      return alert("Speech Recognition not supported in this browser.");
+    if (!recognitionRef.current) {
+      toast.error(
+        sttError || "Speech-to-text isn't available in this browser.",
+      );
+      // Helpful fallback for iOS: focus the textarea so user can use keyboard dictation.
+      textareaRef.current?.focus();
+      return;
+    }
     if (isListening) {
       recognitionRef.current.stop();
     } else {
@@ -325,12 +351,21 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
       <div className="flex items-end gap-2 sm:gap-3 rounded-xl">
         <button
           onClick={toggleMic}
+          disabled={!sttAvailable}
           className={`flex shrink-0 items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all active:scale-95 shadow-lg ${
             isListening
               ? "bg-red-500 shadow-red-500/30 animate-pulse text-white"
-              : "bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white"
+              : sttAvailable
+                ? "bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white"
+                : "bg-white/5 text-slate-500 cursor-not-allowed"
           }`}
-          title={isListening ? "Stop listening" : "Start speaking"}
+          title={
+            !sttAvailable
+              ? "Speech-to-text unavailable"
+              : isListening
+                ? "Stop listening"
+                : "Start speaking"
+          }
         >
           <span className="material-symbols-outlined text-2xl">
             {isListening ? "mic_off" : "mic"}
@@ -338,6 +373,7 @@ function ReplyBar({ onSend, currentLocale, onPresenceChange }) {
         </button>
 
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
